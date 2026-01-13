@@ -1,35 +1,31 @@
-;name: Package Remote Runner Extension
+name: Package VSIX
 
 on:
   push:
     branches:
-      - main   # change if your main branch has a different name
-  workflow_dispatch:  # allows manual trigger from GitHub UI
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repo
         uses: actions/checkout@v3
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 24
+          node-version: '24'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: npm install
 
-      - name: Install VSCE
-        run: npm install -g @vscode/vsce
+      - name: Package VSIX
+        run: npx @vscode/vsce package
 
-      - name: Package VS Code Extension
-        run: vsce package
-
-      - name: Upload VSIX artifact
+      - name: Upload VSIX as Artifact
         uses: actions/upload-artifact@v3
         with:
-          name: remote-runner-vsix
+          name: remote-runner
           path: "*.vsix"
