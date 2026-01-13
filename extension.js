@@ -28,19 +28,35 @@ function activate(context) {
         if (!root) return;
 
         const langChoice = await vscode.window.showQuickPick(['Python', 'Java'], { placeHolder: 'Select Language', ignoreFocusOut: true });
-        const username = await vscode.window.showInputBox({ prompt: "GitHub Username", ignoreFocusOut: true });
-        const token = await vscode.window.showInputBox({ prompt: "Personal Access Token", password: true, ignoreFocusOut: true });
-        const repoName = await vscode.window.showInputBox({ prompt: "Repository Name", ignoreFocusOut: true });
         
-        if (!langChoice || !username || !token || !repoName) return;
+        // Use a single input for the URL to make it easier for the user
+        const fullUrlInput = await vscode.window.showInputBox({ 
+            prompt: "Paste your GitHub Repository URL", 
+            placeHolder: "https://github.com/username/repo",
+            ignoreFocusOut: true 
+        });
 
-        // --- IMPROVEMENT 1: URL CLEANING ---
-        // Removes accidental spaces or ".git" suffix which can break the auth string
-        const cleanUser = username.trim();
-        const cleanToken = token.trim();
-        const cleanRepo = repoName.trim().replace(".git", "");
+        const token = await vscode.window.showInputBox({ 
+            prompt: "Paste your Personal Access Token (PAT)", 
+            password: true, 
+            ignoreFocusOut: true 
+        });
         
-        const authUrl = `https://${cleanUser}:${cleanToken}@github.com/${cleanUser}/${cleanRepo}.git`;
+        if (!langChoice || !fullUrlInput || !token) return;
+
+        // --- SMART URL PARSING ---
+        // This regex extracts 'username' and 'repo' even if the user pastes the whole link
+        const urlMatch = fullUrlInput.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)/);
+        if (!urlMatch) {
+            return vscode.window.showErrorMessage("Invalid GitHub URL format.");
+        }
+
+        const username = urlMatch[1].trim();
+        const repoName = urlMatch[2].trim();
+        const cleanToken = token.trim();
+        
+        // Construct the authenticated URL correctly
+        const authUrl = `https://${username}:${cleanToken}@github.com/${username}/${repoName}.git`;
 
         try {
             const gitDir = path.join(root, '.git');
@@ -48,10 +64,9 @@ function activate(context) {
 
             execSync('git init -b main', { cwd: root });
             
-            // --- IMPROVEMENT 2: GLOBAL IDENTITY FIX ---
-            // GitHub sometimes rejects pushes if the local config has no user.name
-            execSync(`git config user.name "${cleanUser}"`, { cwd: root });
-            execSync(`git config user.email "${cleanUser}@users.noreply.github.com"`, { cwd: root });
+            // Set Identity
+            execSync(`git config user.name "${username}"`, { cwd: root });
+            execSync(`git config user.email "${username}@users.noreply.github.com"`, { cwd: root });
             
             execSync(`git remote add origin ${authUrl}`, { cwd: root });
 
@@ -73,7 +88,7 @@ function activate(context) {
             }
 
             execSync('git add . && git commit -m "Setup"', { cwd: root });
-            vscode.window.showInformationMessage("Setup Complete with Identity Fix.");
+            vscode.window.showInformationMessage(`Successfully connected to ${repoName}!`);
         } catch (e) {
             vscode.window.showErrorMessage("Setup Error: " + e.message);
         }
@@ -113,18 +128,16 @@ function activate(context) {
             isRunning = true;
             writeEmitter.fire(`\r\n${COLORS.yellow}[1/2] Syncing to GitHub...${COLORS.reset}\r\n`);
             
-            // --- IMPROVEMENT 3: ERROR VERBOSITY ---
-            // This captures the ACTUAL reason GitHub says no (like "Repo not found")
             execSync('git add . && git commit --allow-empty -m "Remote Run"', { cwd: root });
             
             try {
+                // Stdout/Stderr pipe helps us see why it fails
                 execSync('git push origin main --force', { cwd: root, stdio: 'pipe' });
             } catch (pushError) {
                 const detailedError = pushError.stderr ? pushError.stderr.toString() : pushError.message;
                 throw new Error(detailedError);
             }
 
-            // Polling logic...
             const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let frameIdx = 0, lastLogContent = "", attempts = 0;
             writeEmitter.fire(`${COLORS.yellow}[2/2] Awaiting Action...  ${COLORS.reset}`);
@@ -161,7 +174,6 @@ function activate(context) {
             }, 1500); 
 
         } catch (err) {
-            // Displays the specific Git error message in the console
             writeEmitter.fire(`\r\n${COLORS.red}Push Failed: ${err.message}${COLORS.reset}\r\n> `);
             isRunning = false;
         }
