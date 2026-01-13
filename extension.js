@@ -7,14 +7,7 @@ let isRunning = false;
 let writeEmitter = new vscode.EventEmitter();
 let remoteTerminal = null;
 
-const COLORS = {
-    reset: "\x1b[0m",
-    green: "\x1b[32m",
-    red: "\x1b[31m",
-    yellow: "\x1b[33m",
-    cyan: "\x1b[36m",
-    bold: "\x1b[1m"
-};
+const COLORS = { reset: "\x1b[0m", green: "\x1b[32m", red: "\x1b[31m", yellow: "\x1b[33m", cyan: "\x1b[36m" };
 const CLEAR_LINE = "\x1b[2K\r";
 
 function activate(context) {
@@ -28,44 +21,34 @@ function activate(context) {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) return;
 
-        const langChoice = await vscode.window.showQuickPick(['Python', 'Java'], { 
-            placeHolder: 'Select Language', 
-            ignoreFocusOut: true 
-        });
+        const langChoice = await vscode.window.showQuickPick(['Python', 'Java'], { placeHolder: 'Select Language', ignoreFocusOut: true });
         
-        const fullUrl = await vscode.window.showInputBox({ 
-            prompt: "Step 1: Paste the FULL HTTPS Repository URL", 
-            placeHolder: "https://github.com/username/repo.git",
+        const fullRepoUrl = await vscode.window.showInputBox({ 
+            prompt: "Paste the FULL HTTPS Repository URL", 
+            placeHolder: "https://github.com/user/repo.git",
             ignoreFocusOut: true 
         });
 
         const token = await vscode.window.showInputBox({ 
-            prompt: "Step 2: Paste your Personal Access Token", 
+            prompt: "Paste your Personal Access Token", 
             password: true, 
             ignoreFocusOut: true 
         });
         
-        if (!langChoice || !fullUrl || !token) return;
+        if (!langChoice || !fullRepoUrl || !token) return;
 
-        // --- THE DIRECT INSERTION LOGIC ---
-        // We just take the link, remove "https://", and put "https://TOKEN@" in front.
-        const cleanUrl = fullUrl.trim().replace(/^https?:\/\//, "");
+        // Strip "https://" if the user included it, then build: https://TOKEN@github.com/...
+        const cleanUrl = fullRepoUrl.trim().replace(/^https?:\/\//, "");
         const authUrl = `https://${token.trim()}@${cleanUrl}`;
 
         try {
-            // Wipe old git to ensure the new link is applied
             const gitDir = path.join(root, '.git');
             if (fs.existsSync(gitDir)) fs.rmSync(gitDir, { recursive: true, force: true });
 
             execSync('git init -b main', { cwd: root });
-            
-            // Set dummy identity for commit
-            execSync(`git config user.name "Student"`, { cwd: root });
-            execSync(`git config user.email "student@example.com"`, { cwd: root });
-            
             execSync(`git remote add origin ${authUrl}`, { cwd: root });
 
-            // Ensure project structure
+            // Basic folder setup
             ['src', 'input', 'logs', '.vscode', '.github/workflows'].forEach(d => 
                 fs.mkdirSync(path.join(root, d), { recursive: true }));
 
@@ -82,10 +65,15 @@ function activate(context) {
                 copyTemp('java_workflow.txt', '.github/workflows/main.yml');
             }
 
-            execSync('git add . && git commit -m "Setup Workspace"', { cwd: root });
-            vscode.window.showInformationMessage("Ready! Link and Token are configured.");
+            // Simple commit without specific identity logic
+            execSync('git add . && git commit -m "Setup"', { 
+                cwd: root, 
+                env: { ...process.env, GIT_AUTHOR_NAME: "Student", GIT_COMMITTER_NAME: "Student", GIT_AUTHOR_EMAIL: "s@edu.com", GIT_COMMITTER_EMAIL: "s@edu.com" } 
+            });
+
+            vscode.window.showInformationMessage("Setup Ready.");
         } catch (e) {
-            vscode.window.showErrorMessage("Setup Failed: " + e.message);
+            vscode.window.showErrorMessage("Setup Error: " + e.message);
         }
     });
 
@@ -102,7 +90,7 @@ function activate(context) {
                 name: "Remote Runner Console",
                 pty: {
                     onDidWrite: writeEmitter.event,
-                    open: () => writeEmitter.fire(`${COLORS.cyan}--- Console Ready ---\r\n> `),
+                    open: () => writeEmitter.fire(`${COLORS.cyan}--- Ready ---\r\n> `),
                     handleInput: data => {
                         if (data === '\r' || data === '\n') {
                             writeEmitter.fire('\r\n> ');
@@ -122,21 +110,18 @@ function activate(context) {
 
         try {
             isRunning = true;
-            writeEmitter.fire(`\r\n${COLORS.yellow}[1/2] Syncing to GitHub...${COLORS.reset}\r\n`);
+            writeEmitter.fire(`\r\n${COLORS.yellow}[1/2] Syncing...${COLORS.reset}\r\n`);
             
-            execSync('git add . && git commit --allow-empty -m "Remote Run"', { cwd: root });
+            execSync('git add . && git commit --allow-empty -m "Run"', { 
+                cwd: root,
+                env: { ...process.env, GIT_AUTHOR_NAME: "Student", GIT_COMMITTER_NAME: "Student", GIT_AUTHOR_EMAIL: "s@edu.com", GIT_COMMITTER_EMAIL: "s@edu.com" }
+            });
             
-            try {
-                // Stdout/Stderr pipe helps us see why it fails
-                execSync('git push origin main --force', { cwd: root, stdio: 'pipe' });
-            } catch (pushError) {
-                const detailedError = pushError.stderr ? pushError.stderr.toString() : pushError.message;
-                throw new Error(detailedError);
-            }
+            execSync('git push origin main --force', { cwd: root, stdio: 'pipe' });
 
             const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let frameIdx = 0, lastLogContent = "", attempts = 0;
-            writeEmitter.fire(`${COLORS.yellow}[2/2] Awaiting Action...  ${COLORS.reset}`);
+            writeEmitter.fire(`${COLORS.yellow}[2/2] Awaiting Logs...  ${COLORS.reset}`);
 
             const poller = setInterval(() => {
                 if (lastLogContent === "") {
@@ -148,8 +133,7 @@ function activate(context) {
                     const currentLogs = execSync('git show remote_logs:logs/output.txt', { cwd: root }).toString();
                     if (currentLogs.length > lastLogContent.length) {
                         if (lastLogContent === "") {
-                            writeEmitter.fire(CLEAR_LINE);
-                            writeEmitter.fire(`${COLORS.green}${COLORS.bold}--- OUTPUT ---${COLORS.reset}\r\n`);
+                            writeEmitter.fire(CLEAR_LINE + `${COLORS.green}--- OUTPUT ---${COLORS.reset}\r\n`);
                         }
                         const newChunk = currentLogs.substring(lastLogContent.length);
                         writeEmitter.fire(newChunk.replace(/\n/g, '\r\n'));
@@ -161,7 +145,7 @@ function activate(context) {
                         }
                     }
                 } catch (e) {
-                    if (attempts++ > 120) {
+                    if (attempts++ > 100) {
                         writeEmitter.fire(CLEAR_LINE + `${COLORS.red}Timeout.${COLORS.reset}\r\n> `);
                         clearInterval(poller);
                         isRunning = false;
