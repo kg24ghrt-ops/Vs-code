@@ -4,23 +4,39 @@ on:
     branches: [ 'main' ]
 permissions:
   contents: write
+
 jobs:
   run-python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python 3.12
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # --- EDIT VERSION HERE ---
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.12' # Change this to '3.13', '3.x', etc.
+
       - name: Execute
         run: |
           mkdir -p logs
-          python3 src/main.py < input/input.txt > logs/output.txt 2>&1
+          if [ -f "src/main.py" ]; then
+            python3 src/main.py < input/input.txt > logs/output.txt 2>&1
+          else
+            echo "Error: src/main.py not found." > logs/output.txt
+          fi
+          
+          # CRITICAL: DO NOT REMOVE THIS LINE
+          echo -e "\n--- FINISHED ---" >> logs/output.txt
+          
+          TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
+          cp logs/output.txt logs/run_$TIMESTAMP.txt
+
       - name: Push Logs
         run: |
           git config user.name "RemoteBot"
           git config user.email "bot@remote.com"
-          git add logs/output.txt
-          git commit -m "Update Python Logs" || exit 0
+          git add logs/
+          git commit -m "Results update" || exit 0
           git push origin HEAD:logs --force
