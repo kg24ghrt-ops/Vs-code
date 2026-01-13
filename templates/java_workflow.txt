@@ -1,0 +1,28 @@
+name: Java Remote Runner
+on:
+  push:
+    branches: [ 'main' ]
+permissions:
+  contents: write
+jobs:
+  run-java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Execute
+        run: |
+          mkdir -p logs
+          javac src/Main.java
+          java -cp src Main < input/input.txt > logs/output.txt 2>&1
+      - name: Push Logs
+        run: |
+          git config user.name "RemoteBot"
+          git config user.email "bot@remote.com"
+          git add logs/output.txt
+          git commit -m "Update Java Logs" || exit 0
+          git push origin HEAD:logs --force

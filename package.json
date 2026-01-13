@@ -1,27 +1,66 @@
 {
   "name": "remote-runner",
   "displayName": "Remote Runner",
-  "description": "Remote code execution for students via GitHub Actions",
-  "version": "1.0.1",
-  "publisher": "student-tools",
+  "description": "Remote code execution for Python and Java via GitHub Actions.",
+  "version": "1.0.0",
+  "publisher": "your-name",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/remote-runner"
+    "url": "https://github.com/username/remote-runner"
   },
-  "engines": { "vscode": "^1.75.0" },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages",
+    "Education"
+  ],
   "main": "./extension.js",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onCommand:remote-runner.setup",
+    "onCommand:remote-runner.run"
+  ],
   "contributes": {
     "commands": [
-      { "command": "remote-runner.setup", "title": "Remote Runner: Setup Workspace" },
-      { "command": "remote-runner.run", "title": "Remote Runner: Run on Remote" }
+      {
+        "command": "remote-runner.setup",
+        "title": "Remote Runner: Setup Workspace",
+        "category": "Remote Runner"
+      },
+      {
+        "command": "remote-runner.run",
+        "title": "Remote Runner: Run on Remote",
+        "category": "Remote Runner"
+      }
     ],
     "configuration": {
       "title": "Remote Runner",
       "properties": {
-        "remoteRunner.studentName": { "type": "string", "default": "student1" }
+        "remoteRunner.studentName": {
+          "type": "string",
+          "default": "student1",
+          "description": "Unique identifier for the student."
+        },
+        "remoteRunner.pollInterval": {
+          "type": "number",
+          "default": 4000,
+          "description": "How often (ms) to check GitHub for results."
+        },
+        "remoteRunner.maxAttempts": {
+          "type": "number",
+          "default": 45,
+          "description": "Maximum number of poll attempts before timing out."
+        }
       }
     }
+  },
+  "scripts": {
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0"
   }
 }
