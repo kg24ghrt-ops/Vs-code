@@ -1,18 +1,17 @@
 {
   "name": "remote-runner",
   "displayName": "Remote Runner",
-  "description": "Remote code execution via GitHub Actions for students.",
-  "version": "1.0.0",
-  "publisher": "your-name-or-org",
+  "description": "Remote code execution for students via GitHub Actions",
+  "version": "1.0.1",
+  "publisher": "student-tools",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/remote-runner.git"
+    "url": "https://github.com/yourusername/remote-runner"
   },
-  "license": "MIT",
   "engines": { "vscode": "^1.75.0" },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
   "main": "./extension.js",
+  "activationEvents": ["onStartupFinished"],
   "contributes": {
     "commands": [
       { "command": "remote-runner.setup", "title": "Remote Runner: Setup Workspace" },
@@ -21,7 +20,7 @@
     "configuration": {
       "title": "Remote Runner",
       "properties": {
-        "remoteRunner.studentName": { "type": "string", "default": "student1", "description": "Student ID" }
+        "remoteRunner.studentName": { "type": "string", "default": "student1" }
       }
     }
   }

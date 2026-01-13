@@ -1,27 +1,41 @@
-name: Remote Runner Execution
+name: Remote Execution
+
 on:
   push:
     branches:
       - 'code/**'
+
+permissions:
+  contents: write
+
 jobs:
-  run-code:
+  run:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
-      - name: Execute
+      - uses: actions/checkout@v4
+
+      - name: Prepare folders
         run: |
-          mkdir -p logs
-          # Detect language and run
+          mkdir -p logs input
+
+      - name: Execute code
+        run: |
           if [ -f "src/main.py" ]; then
             python3 src/main.py < input/input.txt > logs/output.txt
           elif [ -f "src/Main.java" ]; then
             javac src/Main.java
             java -cp src Main < input/input.txt > logs/output.txt
+          else
+            echo "No executable source found" > logs/output.txt
           fi
-      - name: Push Results
+
+      - name: Push logs
         run: |
           git config user.name "RemoteBot"
           git config user.email "bot@remote.com"
+
+          git checkout -B logs/${{ github.ref_name }}
           git add logs/output.txt
-          git commit -m "Remote output update"
-          git push origin HEAD:logs/${{ github.ref_name }} --force
+          git commit --allow-empty -m "Update logs"
+          git push origin logs/${{ github.ref_name }} --force
