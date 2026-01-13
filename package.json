@@ -2,8 +2,8 @@
   "name": "remote-runner",
   "displayName": "Remote Runner",
   "description": "Remote code execution for Python and Java via GitHub Actions.",
-  "version": "1.0.0",
-  "publisher": "your-name",
+  "version": "1.3.0",
+  "publisher": "student-tools",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -13,9 +13,8 @@
     "vscode": "^1.80.0"
   },
   "categories": [
-    "Other",
-    "Programming Languages",
-    "Education"
+    "Education",
+    "Programming Languages"
   ],
   "main": "./extension.js",
   "activationEvents": [
@@ -35,32 +34,30 @@
         "category": "Remote Runner"
       }
     ],
+    "snippets": [
+      {
+        "language": "python",
+        "path": "./templates/py_snippets.json"
+      },
+      {
+        "language": "java",
+        "path": "./templates/java_snippets.json"
+      }
+    ],
     "configuration": {
       "title": "Remote Runner",
       "properties": {
         "remoteRunner.studentName": {
           "type": "string",
           "default": "student1",
-          "description": "Unique identifier for the student."
+          "description": "Unique student identifier for branch naming."
         },
         "remoteRunner.pollInterval": {
           "type": "number",
           "default": 4000,
-          "description": "How often (ms) to check GitHub for results."
-        },
-        "remoteRunner.maxAttempts": {
-          "type": "number",
-          "default": 45,
-          "description": "Maximum number of poll attempts before timing out."
+          "description": "Delay in ms between log checks."
         }
       }
     }
-  },
-  "scripts": {
-    "package": "vsce package",
-    "publish": "vsce publish"
-  },
-  "devDependencies": {
-    "@types/vscode": "^1.80.0"
   }
 }
