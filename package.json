@@ -1,0 +1,23 @@
+{
+  "name": "remote-runner",
+  "displayName": "Remote Runner",
+  "version": "1.0.0",
+  "publisher": "YourName",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "remote-runner.setup", "title": "Remote Runner: Setup Workspace" },
+      { "command": "remote-runner.run", "title": "Remote Runner: Run on Remote" }
+    ],
+    "configuration": {
+      "title": "Remote Runner",
+      "properties": {
+        "remoteRunner.repoUrl": { "type": "string", "default": "", "description": "GitHub Repository URL" },
+        "remoteRunner.studentName": { "type": "string", "default": "student1", "description": "Student Identifier" }
+      }
+    }
+  }
+}

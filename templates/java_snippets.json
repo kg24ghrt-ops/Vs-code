@@ -1,0 +1,12 @@
+{
+  "Main Method": {
+    "prefix": "main",
+    "body": ["public static void main(String[] args) {\n\t$0\n}"],
+    "description": "Java main method"
+  },
+  "Scanner Setup": {
+    "prefix": "scan",
+    "body": ["Scanner sc = new Scanner(System.in);", "String input = sc.nextLine();"],
+    "description": "Standard Scanner input"
+  }
+}

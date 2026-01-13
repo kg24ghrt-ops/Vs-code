@@ -1,0 +1,12 @@
+import sys
+
+def main():
+    print("--- Python Remote Runner ---")
+    try:
+        user_input = input("Enter your name: ")
+        print(f"Hello, {user_input}! Remote execution successful.")
+    except EOFError:
+        print("Error: No input detected in input/input.txt")
+
+if __name__ == "__main__":
+    main()

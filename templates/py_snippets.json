@@ -1,0 +1,12 @@
+{
+  "Main Block": {
+    "prefix": "main",
+    "body": ["if __name__ == \"__main__\":", "\t$0"],
+    "description": "Python main block"
+  },
+  "Remote Input": {
+    "prefix": "rin",
+    "body": ["val = input(\"$1\")"],
+    "description": "Remote-ready input"
+  }
+}
