@@ -33,48 +33,39 @@ function activate(context) {
             ignoreFocusOut: true 
         });
         
-        const fullUrlInput = await vscode.window.showInputBox({ 
-            prompt: "Paste your GitHub Repository URL", 
-            placeHolder: "https://github.com/kg24ghrt-ops/Test",
+        const fullUrl = await vscode.window.showInputBox({ 
+            prompt: "Step 1: Paste the FULL HTTPS Repository URL", 
+            placeHolder: "https://github.com/username/repo.git",
             ignoreFocusOut: true 
         });
 
         const token = await vscode.window.showInputBox({ 
-            prompt: "Paste your Personal Access Token (PAT)", 
+            prompt: "Step 2: Paste your Personal Access Token", 
             password: true, 
             ignoreFocusOut: true 
         });
         
-        if (!langChoice || !fullUrlInput || !token) return;
+        if (!langChoice || !fullUrl || !token) return;
 
-        // --- THE FIX: SMART REGEX ---
-        // This looks for "github.com/" and grabs the next two parts of the URL
-        const urlMatch = fullUrlInput.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)/);
-        
-        if (!urlMatch) {
-            return vscode.window.showErrorMessage("Could not understand that GitHub URL. Please paste the full link.");
-        }
-
-        const username = urlMatch[1].trim();
-        const repoName = urlMatch[2].trim();
-        const cleanToken = token.trim();
-        
-        // This builds: https://user:token@github.com/user/repo.git
-        const authUrl = `https://${username}:${cleanToken}@github.com/${username}/${repoName}.git`;
+        // --- THE DIRECT INSERTION LOGIC ---
+        // We just take the link, remove "https://", and put "https://TOKEN@" in front.
+        const cleanUrl = fullUrl.trim().replace(/^https?:\/\//, "");
+        const authUrl = `https://${token.trim()}@${cleanUrl}`;
 
         try {
+            // Wipe old git to ensure the new link is applied
             const gitDir = path.join(root, '.git');
             if (fs.existsSync(gitDir)) fs.rmSync(gitDir, { recursive: true, force: true });
 
             execSync('git init -b main', { cwd: root });
             
-            // Set Identity to prevent push rejections
-            execSync(`git config user.name "${username}"`, { cwd: root });
-            execSync(`git config user.email "${username}@users.noreply.github.com"`, { cwd: root });
+            // Set dummy identity for commit
+            execSync(`git config user.name "Student"`, { cwd: root });
+            execSync(`git config user.email "student@example.com"`, { cwd: root });
             
             execSync(`git remote add origin ${authUrl}`, { cwd: root });
 
-            // Ensure folders exist
+            // Ensure project structure
             ['src', 'input', 'logs', '.vscode', '.github/workflows'].forEach(d => 
                 fs.mkdirSync(path.join(root, d), { recursive: true }));
 
@@ -91,10 +82,10 @@ function activate(context) {
                 copyTemp('java_workflow.txt', '.github/workflows/main.yml');
             }
 
-            execSync('git add . && git commit -m "Remote Runner Setup"', { cwd: root });
-            vscode.window.showInformationMessage(`Connected to ${repoName} via Token!`);
+            execSync('git add . && git commit -m "Setup Workspace"', { cwd: root });
+            vscode.window.showInformationMessage("Ready! Link and Token are configured.");
         } catch (e) {
-            vscode.window.showErrorMessage("Setup Error: " + e.message);
+            vscode.window.showErrorMessage("Setup Failed: " + e.message);
         }
     });
 
@@ -136,7 +127,7 @@ function activate(context) {
             execSync('git add . && git commit --allow-empty -m "Remote Run"', { cwd: root });
             
             try {
-                // Stdout/Stderr pipe shows the REAL error if it fails
+                // Stdout/Stderr pipe helps us see why it fails
                 execSync('git push origin main --force', { cwd: root, stdio: 'pipe' });
             } catch (pushError) {
                 const detailedError = pushError.stderr ? pushError.stderr.toString() : pushError.message;
@@ -170,7 +161,7 @@ function activate(context) {
                         }
                     }
                 } catch (e) {
-                    if (attempts++ > 100) {
+                    if (attempts++ > 120) {
                         writeEmitter.fire(CLEAR_LINE + `${COLORS.red}Timeout.${COLORS.reset}\r\n> `);
                         clearInterval(poller);
                         isRunning = false;
