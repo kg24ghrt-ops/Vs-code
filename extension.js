@@ -16,39 +16,35 @@ function activate(context) {
     statusBarItem.text = `$(play) Run on Remote`;
     statusBarItem.show();
 
-    // --- SETUP COMMAND ---
     let setupCmd = vscode.commands.registerCommand('remote-runner.setup', async () => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) return;
 
         const langChoice = await vscode.window.showQuickPick(['Python', 'Java'], { placeHolder: 'Select Language', ignoreFocusOut: true });
-        
-        const fullRepoUrl = await vscode.window.showInputBox({ 
-            prompt: "Paste the FULL HTTPS Repository URL", 
-            placeHolder: "https://github.com/user/repo.git",
-            ignoreFocusOut: true 
-        });
-
-        const token = await vscode.window.showInputBox({ 
-            prompt: "Paste your Personal Access Token", 
-            password: true, 
-            ignoreFocusOut: true 
-        });
+        const fullRepoUrl = await vscode.window.showInputBox({ prompt: "Step 1: Paste FULL Repo Link", ignoreFocusOut: true });
+        const token = await vscode.window.showInputBox({ prompt: "Step 2: Paste Token", password: true, ignoreFocusOut: true });
         
         if (!langChoice || !fullRepoUrl || !token) return;
 
-        // Strip "https://" if the user included it, then build: https://TOKEN@github.com/...
+        // COMBINE: This puts the token inside the link exactly where GitHub wants it
         const cleanUrl = fullRepoUrl.trim().replace(/^https?:\/\//, "");
         const authUrl = `https://${token.trim()}@${cleanUrl}`;
 
         try {
+            // WIPE OLD DATA
             const gitDir = path.join(root, '.git');
             if (fs.existsSync(gitDir)) fs.rmSync(gitDir, { recursive: true, force: true });
 
             execSync('git init -b main', { cwd: root });
+            
+            // FORCE IDENTITY (This stops the "Who are you?" prompt)
+            execSync(`git config --local user.name "Student"`, { cwd: root });
+            execSync(`git config --local user.email "student@edu.com"`, { cwd: root });
+
+            // ATTACH THE LINK
             execSync(`git remote add origin ${authUrl}`, { cwd: root });
 
-            // Basic folder setup
+            // SETUP FOLDERS
             ['src', 'input', 'logs', '.vscode', '.github/workflows'].forEach(d => 
                 fs.mkdirSync(path.join(root, d), { recursive: true }));
 
@@ -65,19 +61,13 @@ function activate(context) {
                 copyTemp('java_workflow.txt', '.github/workflows/main.yml');
             }
 
-            // Simple commit without specific identity logic
-            execSync('git add . && git commit -m "Setup"', { 
-                cwd: root, 
-                env: { ...process.env, GIT_AUTHOR_NAME: "Student", GIT_COMMITTER_NAME: "Student", GIT_AUTHOR_EMAIL: "s@edu.com", GIT_COMMITTER_EMAIL: "s@edu.com" } 
-            });
-
-            vscode.window.showInformationMessage("Setup Ready.");
+            execSync('git add . && git commit -m "Setup"', { cwd: root });
+            vscode.window.showInformationMessage("Setup Ready. No modifications will occur.");
         } catch (e) {
             vscode.window.showErrorMessage("Setup Error: " + e.message);
         }
     });
 
-    // --- RUN COMMAND ---
     let runCmd = vscode.commands.registerCommand('remote-runner.run', async () => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root || isRunning) return;
@@ -90,7 +80,7 @@ function activate(context) {
                 name: "Remote Runner Console",
                 pty: {
                     onDidWrite: writeEmitter.event,
-                    open: () => writeEmitter.fire(`${COLORS.cyan}--- Ready ---\r\n> `),
+                    open: () => writeEmitter.fire(`${COLORS.cyan}--- Console Ready ---\r\n> `),
                     handleInput: data => {
                         if (data === '\r' || data === '\n') {
                             writeEmitter.fire('\r\n> ');
@@ -110,18 +100,17 @@ function activate(context) {
 
         try {
             isRunning = true;
-            writeEmitter.fire(`\r\n${COLORS.yellow}[1/2] Syncing...${COLORS.reset}\r\n`);
+            writeEmitter.fire(`\r\n${COLORS.yellow}[1/2] Syncing to GitHub...${COLORS.reset}\r\n`);
             
-            execSync('git add . && git commit --allow-empty -m "Run"', { 
-                cwd: root,
-                env: { ...process.env, GIT_AUTHOR_NAME: "Student", GIT_COMMITTER_NAME: "Student", GIT_AUTHOR_EMAIL: "s@edu.com", GIT_COMMITTER_EMAIL: "s@edu.com" }
-            });
+            // Sync current state
+            execSync('git add . && git commit --allow-empty -m "Remote Run"', { cwd: root });
             
+            // PUSH: stdio: 'inherit' would ask for password, stdio: 'pipe' handles it silently
             execSync('git push origin main --force', { cwd: root, stdio: 'pipe' });
 
             const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let frameIdx = 0, lastLogContent = "", attempts = 0;
-            writeEmitter.fire(`${COLORS.yellow}[2/2] Awaiting Logs...  ${COLORS.reset}`);
+            writeEmitter.fire(`${COLORS.yellow}[2/2] Awaiting Results...  ${COLORS.reset}`);
 
             const poller = setInterval(() => {
                 if (lastLogContent === "") {
@@ -145,7 +134,7 @@ function activate(context) {
                         }
                     }
                 } catch (e) {
-                    if (attempts++ > 100) {
+                    if (attempts++ > 150) {
                         writeEmitter.fire(CLEAR_LINE + `${COLORS.red}Timeout.${COLORS.reset}\r\n> `);
                         clearInterval(poller);
                         isRunning = false;
@@ -154,7 +143,7 @@ function activate(context) {
             }, 1500); 
 
         } catch (err) {
-            writeEmitter.fire(`\r\n${COLORS.red}Push Failed: ${err.message}${COLORS.reset}\r\n> `);
+            writeEmitter.fire(`\r\n${COLORS.red}Push Failed: Ensure your Token has 'repo' permissions.${COLORS.reset}\r\n> `);
             isRunning = false;
         }
     });
