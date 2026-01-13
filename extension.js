@@ -26,21 +26,34 @@ function activate(context) {
     // --- SETUP COMMAND ---
     let setupCmd = vscode.commands.registerCommand('remote-runner.setup', async () => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!root) return;
+        if (!root) return vscode.window.showErrorMessage("Open a folder first!");
 
         const langChoice = await vscode.window.showQuickPick(['Python', 'Java'], { placeHolder: 'Select Language' });
         
-        // 1. Ask for Username and Token instead of just a URL
-        const username = await vscode.window.showInputBox({ prompt: "GitHub Username" });
-        const token = await vscode.window.showInputBox({ prompt: "GitHub Personal Access Token (PAT)", password: true });
-        const repoName = await vscode.window.showInputBox({ prompt: "Repository Name (e.g., Test)" });
+        // These inputs are now MANDATORY to clear the old SSH settings
+        const username = await vscode.window.showInputBox({ 
+            prompt: "GitHub Username",
+            placeHolder: "e.g., kg24ghrt-ops" 
+        });
+        const token = await vscode.window.showInputBox({ 
+            prompt: "GitHub Personal Access Token (Classic)", 
+            password: true,
+            placeHolder: "ghp_xxxxxxxxxxxx"
+        });
+        const repoName = await vscode.window.showInputBox({ 
+            prompt: "Repository Name",
+            placeHolder: "e.g., Test"
+        });
         
-        if (!langChoice || !username || !token || !repoName) return;
+        if (!langChoice || !username || !token || !repoName) {
+            return vscode.window.showErrorMessage("Setup cancelled. All fields are required.");
+        }
 
-        // 2. Construct an Authenticated HTTPS URL
-        // Format: https://USERNAME:TOKEN@github.com/USERNAME/REPO.git
-        const authenticatedUrl = `https://${username}:${token}@github.com/${username}/${repoName}.git`;
+        // Clean the URL: ensure no trailing .git or spaces
+        const cleanRepo = repoName.trim().replace(".git", "");
+        const authUrl = `https://${username}:${token}@github.com/${username}/${cleanRepo}.git`;
 
+        // Create folders
         ['src', 'input', 'logs', '.vscode', '.github/workflows'].forEach(d => 
             fs.mkdirSync(path.join(root, d), { recursive: true }));
 
@@ -58,16 +71,23 @@ function activate(context) {
         }
 
         try {
-            // Force reset git to use the new token-based URL
-            if (fs.existsSync(path.join(root, '.git'))) {
-                fs.rmSync(path.join(root, '.git'), { recursive: true, force: true });
+            // CRITICAL: Wipe existing git config to remove old SSH origin
+            const gitDir = path.join(root, '.git');
+            if (fs.existsSync(gitDir)) {
+                fs.rmSync(gitDir, { recursive: true, force: true });
             }
+
             execSync('git init -b main', { cwd: root });
-            execSync(`git remote add origin ${authenticatedUrl}`, { cwd: root });
-            execSync('git add . && git commit -m "Setup Workspace"', { cwd: root });
-            vscode.window.showInformationMessage("Workspace Ready! Token authentication configured.");
+            execSync(`git remote add origin ${authUrl}`, { cwd: root });
+            
+            // Set local git identity so the bot doesn't complain
+            execSync(`git config user.name "${username}"`, { cwd: root });
+            execSync(`git config user.email "${username}@users.noreply.github.com"`, { cwd: root });
+
+            execSync('git add . && git commit -m "Setup with Token Auth"', { cwd: root });
+            vscode.window.showInformationMessage("Success! Old SSH settings cleared. Token Auth is active.");
         } catch (e) {
-            vscode.window.showErrorMessage("Git Setup Failed: " + e.message);
+            vscode.window.showErrorMessage("Git Error: " + e.message);
         }
     });
 
@@ -84,7 +104,7 @@ function activate(context) {
                 name: "Remote Runner Console",
                 pty: {
                     onDidWrite: writeEmitter.event,
-                    open: () => writeEmitter.fire(`${COLORS.cyan}--- Console Ready ---\r\n> `),
+                    open: () => writeEmitter.fire(`${COLORS.cyan}--- Token Auth Console Ready ---\r\n> `),
                     handleInput: data => {
                         if (data === '\r' || data === '\n') {
                             writeEmitter.fire('\r\n> ');
@@ -104,15 +124,15 @@ function activate(context) {
 
         try {
             isRunning = true;
-            writeEmitter.fire(`\r\n${COLORS.yellow}[1/2] Syncing to GitHub via Token...${COLORS.reset}\r\n`);
+            writeEmitter.fire(`\r\n${COLORS.yellow}[1/2] Syncing via HTTPS Token...${COLORS.reset}\r\n`);
             
-            execSync('git add . && git commit --allow-empty -m "Remote Execution"', { cwd: root });
+            execSync('git add . && git commit --allow-empty -m "Remote Run"', { cwd: root });
             execSync('git push origin main --force', { cwd: root });
 
             const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let frameIdx = 0, lastLogContent = "", attempts = 0;
 
-            writeEmitter.fire(`${COLORS.yellow}[2/2] Awaiting Results...  ${COLORS.reset}`);
+            writeEmitter.fire(`${COLORS.yellow}[2/2] Awaiting GitHub Action...  ${COLORS.reset}`);
 
             const poller = setInterval(() => {
                 if (lastLogContent === "") {
@@ -121,6 +141,7 @@ function activate(context) {
                 }
 
                 try {
+                    // Fetch logs from the remote branch
                     execSync('git fetch origin logs:remote_logs --force', { cwd: root });
                     const currentLogs = execSync('git show remote_logs:logs/output.txt', { cwd: root }).toString();
                     
@@ -134,14 +155,14 @@ function activate(context) {
                         lastLogContent = currentLogs;
                         
                         if (currentLogs.includes("--- FINISHED ---")) {
-                            writeEmitter.fire(`\r\n${COLORS.green}>>> Run Complete!${COLORS.reset}\r\n> `);
+                            writeEmitter.fire(`\r\n${COLORS.green}>>> Done.${COLORS.reset}\r\n> `);
                             clearInterval(poller);
                             isRunning = false;
                         }
                     }
                 } catch (e) {
                     if (attempts++ > 100) {
-                        writeEmitter.fire(CLEAR_LINE + `${COLORS.red}Timeout waiting for logs.${COLORS.reset}\r\n> `);
+                        writeEmitter.fire(CLEAR_LINE + `${COLORS.red}Action Timeout.${COLORS.reset}\r\n> `);
                         clearInterval(poller);
                         isRunning = false;
                     }
@@ -149,7 +170,7 @@ function activate(context) {
             }, 1500); 
 
         } catch (err) {
-            writeEmitter.fire(`\r\n${COLORS.red}Error: Push Failed. Ensure your Token has 'repo' permissions.${COLORS.reset}\r\n> `);
+            writeEmitter.fire(`\r\n${COLORS.red}Push Failed. Check if your Token has 'repo' permissions.${COLORS.reset}\r\n> `);
             isRunning = false;
         }
     });
