@@ -17,6 +17,9 @@ const COLORS = {
 };
 const CLEAR_LINE = "\x1b[2K\r";
 
+/**
+ * @param {vscode.ExtensionContext} context
+ */
 function activate(context) {
     const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBarItem.command = 'remote-runner.run';
@@ -29,12 +32,20 @@ function activate(context) {
         if (!root) return vscode.window.showErrorMessage("Open a folder first!");
 
         const langChoice = await vscode.window.showQuickPick(['Python', 'Java'], { placeHolder: 'Select Language' });
-        if (!langChoice) return;
+        const repoUrl = await vscode.window.showInputBox({ prompt: "GitHub Repository URL (SSH or HTTPS)" });
+        if (!langChoice || !repoUrl) return;
 
-        const repoUrl = await vscode.window.showInputBox({ prompt: "GitHub Repository URL" });
-        if (!repoUrl) return;
+        // --- AUTOMATIC SSH HANDSHAKE ---
+        if (repoUrl.includes('git@github.com')) {
+            try {
+                const sshCmd = process.platform === 'win32' 
+                    ? 'if not exist %USERPROFILE%\\.ssh mkdir %USERPROFILE%\\.ssh && ssh-keyscan -t rsa github.com >> %USERPROFILE%\\.ssh\\known_hosts'
+                    : 'mkdir -p ~/.ssh && ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts';
+                execSync(sshCmd, { stdio: 'ignore' });
+            } catch (e) { /* Fallback for systems without ssh-keyscan */ }
+        }
 
-        // Folder creation
+        // Folder structure
         ['src', 'input', 'logs', '.vscode', '.github/workflows'].forEach(d => 
             fs.mkdirSync(path.join(root, d), { recursive: true }));
 
@@ -54,9 +65,9 @@ function activate(context) {
         try {
             execSync('git init -b main', { cwd: root });
             execSync(`git remote add origin ${repoUrl}`, { cwd: root });
-            execSync('git add . && git commit -m "Initial Setup"', { cwd: root });
-            vscode.window.showInformationMessage("Workspace Ready! You can edit the .yml file to change versions.");
-        } catch (e) { vscode.window.showWarningMessage("Git already initialized."); }
+            execSync('git add . && git commit -m "Setup Workspace"', { cwd: root });
+            vscode.window.showInformationMessage("Workspace Ready! You can now edit the .yml to change versions.");
+        } catch (e) { vscode.window.showWarningMessage("Git updated with new origin."); }
     });
 
     // --- RUN COMMAND ---
@@ -64,12 +75,12 @@ function activate(context) {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root || isRunning) return;
 
-        const config = vscode.workspace.getConfiguration('remoteRunner');
-        const pollInterval = config.get('pollInterval') || 4000;
         const inputPath = path.join(root, 'input/input.txt');
-        
         if (!fs.existsSync(path.dirname(inputPath))) fs.mkdirSync(path.dirname(inputPath));
-        fs.writeFileSync(inputPath, ''); 
+        
+        // Detect current branch dynamically
+        let branch = 'main';
+        try { branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: root }).toString().trim(); } catch(e) {}
 
         if (!remoteTerminal) {
             remoteTerminal = vscode.window.createTerminal({
@@ -78,9 +89,12 @@ function activate(context) {
                     onDidWrite: writeEmitter.event,
                     open: () => writeEmitter.fire(`${COLORS.cyan}--- Console Ready ---\r\n> `),
                     handleInput: data => {
-                        if (data === '\r') {
+                        // CLEAN INPUT HANDLING
+                        if (data === '\r' || data === '\n') {
                             writeEmitter.fire('\r\n> ');
                             fs.appendFileSync(inputPath, '\n');
+                        } else if (data === '\x7f') { // Backspace
+                            writeEmitter.fire('\b \b');
                         } else {
                             writeEmitter.fire(data);
                             fs.appendFileSync(inputPath, data);
@@ -94,15 +108,15 @@ function activate(context) {
 
         try {
             isRunning = true;
-            writeEmitter.fire(`\r\n${COLORS.yellow}[1/2] Syncing to GitHub...${COLORS.reset}\r\n`);
+            writeEmitter.fire(`\r\n${COLORS.yellow}[1/2] Syncing to GitHub (${branch})...${COLORS.reset}\r\n`);
             
-            execSync('git add . && git commit --allow-empty -m "Remote Run"', { cwd: root });
-            execSync('git push origin main --force', { cwd: root });
+            execSync('git add . && git commit --allow-empty -m "Remote Execution Request"', { cwd: root });
+            execSync(`git push origin ${branch} --force`, { cwd: root });
 
             const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let frameIdx = 0, lastLogContent = "", attempts = 0;
 
-            writeEmitter.fire(`${COLORS.yellow}[2/2] Awaiting Logs...  ${COLORS.reset}`);
+            writeEmitter.fire(`${COLORS.yellow}[2/2] Awaiting Results...  ${COLORS.reset}`);
 
             const poller = setInterval(() => {
                 if (lastLogContent === "") {
@@ -130,16 +144,16 @@ function activate(context) {
                         }
                     }
                 } catch (e) {
-                    if (attempts++ > 60) {
-                        writeEmitter.fire(CLEAR_LINE + `${COLORS.red}Timeout.${COLORS.reset}\r\n> `);
+                    if (attempts++ > 100) { // Extended timeout for heavy Java builds
+                        writeEmitter.fire(CLEAR_LINE + `${COLORS.red}Timeout waiting for GitHub Action.${COLORS.reset}\r\n> `);
                         clearInterval(poller);
                         isRunning = false;
                     }
                 }
-            }, 1000); 
+            }, 1500); 
 
         } catch (err) {
-            writeEmitter.fire(`\r\n${COLORS.red}Git Error: ${err.message}${COLORS.reset}\r\n> `);
+            writeEmitter.fire(`\r\n${COLORS.red}Error: Push Failed. Ensure SSH keys are set up on GitHub.${COLORS.reset}\r\n> `);
             isRunning = false;
         }
     });
