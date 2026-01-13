@@ -23,16 +23,19 @@ function activate(context) {
     statusBarItem.text = `$(play) Run on Remote`;
     statusBarItem.show();
 
+    // --- SETUP COMMAND ---
     let setupCmd = vscode.commands.registerCommand('remote-runner.setup', async () => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) return;
 
-        const langChoice = await vscode.window.showQuickPick(['Python', 'Java'], { placeHolder: 'Select Language', ignoreFocusOut: true });
+        const langChoice = await vscode.window.showQuickPick(['Python', 'Java'], { 
+            placeHolder: 'Select Language', 
+            ignoreFocusOut: true 
+        });
         
-        // Use a single input for the URL to make it easier for the user
         const fullUrlInput = await vscode.window.showInputBox({ 
             prompt: "Paste your GitHub Repository URL", 
-            placeHolder: "https://github.com/username/repo",
+            placeHolder: "https://github.com/kg24ghrt-ops/Test",
             ignoreFocusOut: true 
         });
 
@@ -44,18 +47,19 @@ function activate(context) {
         
         if (!langChoice || !fullUrlInput || !token) return;
 
-        // --- SMART URL PARSING ---
-        // This regex extracts 'username' and 'repo' even if the user pastes the whole link
+        // --- THE FIX: SMART REGEX ---
+        // This looks for "github.com/" and grabs the next two parts of the URL
         const urlMatch = fullUrlInput.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)/);
+        
         if (!urlMatch) {
-            return vscode.window.showErrorMessage("Invalid GitHub URL format.");
+            return vscode.window.showErrorMessage("Could not understand that GitHub URL. Please paste the full link.");
         }
 
         const username = urlMatch[1].trim();
         const repoName = urlMatch[2].trim();
         const cleanToken = token.trim();
         
-        // Construct the authenticated URL correctly
+        // This builds: https://user:token@github.com/user/repo.git
         const authUrl = `https://${username}:${cleanToken}@github.com/${username}/${repoName}.git`;
 
         try {
@@ -64,13 +68,13 @@ function activate(context) {
 
             execSync('git init -b main', { cwd: root });
             
-            // Set Identity
+            // Set Identity to prevent push rejections
             execSync(`git config user.name "${username}"`, { cwd: root });
             execSync(`git config user.email "${username}@users.noreply.github.com"`, { cwd: root });
             
             execSync(`git remote add origin ${authUrl}`, { cwd: root });
 
-            // Folder and Template logic
+            // Ensure folders exist
             ['src', 'input', 'logs', '.vscode', '.github/workflows'].forEach(d => 
                 fs.mkdirSync(path.join(root, d), { recursive: true }));
 
@@ -87,13 +91,14 @@ function activate(context) {
                 copyTemp('java_workflow.txt', '.github/workflows/main.yml');
             }
 
-            execSync('git add . && git commit -m "Setup"', { cwd: root });
-            vscode.window.showInformationMessage(`Successfully connected to ${repoName}!`);
+            execSync('git add . && git commit -m "Remote Runner Setup"', { cwd: root });
+            vscode.window.showInformationMessage(`Connected to ${repoName} via Token!`);
         } catch (e) {
             vscode.window.showErrorMessage("Setup Error: " + e.message);
         }
     });
 
+    // --- RUN COMMAND ---
     let runCmd = vscode.commands.registerCommand('remote-runner.run', async () => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root || isRunning) return;
@@ -131,7 +136,7 @@ function activate(context) {
             execSync('git add . && git commit --allow-empty -m "Remote Run"', { cwd: root });
             
             try {
-                // Stdout/Stderr pipe helps us see why it fails
+                // Stdout/Stderr pipe shows the REAL error if it fails
                 execSync('git push origin main --force', { cwd: root, stdio: 'pipe' });
             } catch (pushError) {
                 const detailedError = pushError.stderr ? pushError.stderr.toString() : pushError.message;
