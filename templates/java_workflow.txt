@@ -12,26 +12,29 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # --- EDIT VERSION HERE ---
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '21' # Change this to '22', '23', etc.
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Execute
         run: |
-          mkdir -p logs
+          mkdir -p logs input
+          INPUT_FILE=$(ls input/input_*.txt 2>/dev/null | sort -r | head -n 1)
+          if [ -z "$INPUT_FILE" ]; then
+            echo "No input file found!" > logs/output.txt
+            exit 1
+          fi
+
           if [ -f "src/Main.java" ]; then
             javac src/Main.java
-            java -cp src Main < input/input.txt > logs/output.txt 2>&1
+            java -cp src Main < "$INPUT_FILE" > logs/output.txt 2>&1
           else
             echo "Error: src/Main.java not found." > logs/output.txt
           fi
-          
-          # CRITICAL: DO NOT REMOVE THIS LINE
+
           echo -e "\n--- FINISHED ---" >> logs/output.txt
-          
           TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
           cp logs/output.txt logs/run_$TIMESTAMP.txt
 
@@ -39,6 +42,8 @@ jobs:
         run: |
           git config user.name "RemoteBot"
           git config user.email "bot@remote.com"
+          git fetch origin logs || git checkout -b logs
+          git switch logs
           git add logs/
-          git commit -m "Results update" || exit 0
-          git push origin HEAD:logs --force
+          git commit -m "Results update" || echo "No changes to commit"
+          git push origin logs --force

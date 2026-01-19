@@ -1,39 +1,49 @@
 {
   "name": "remote-runner",
-  "displayName": "Remote Runner",
-  "description": "Remote code execution for Python and Java via GitHub Actions.",
-  "version": "1.4.6",
+  "displayName": "Remote Runner Pro",
+  "description": "Enterprise-grade remote code execution via GitHub Actions.",
+  "version": "1.8.6",
   "publisher": "student-tools",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/username/remote-runner"
-  },
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
     "Education",
-    "Programming Languages"
+    "Programming Languages",
+    "Testing"
   ],
   "main": "./extension.js",
   "activationEvents": [
     "onCommand:remote-runner.setup",
-    "onCommand:remote-runner.run"
+    "onCommand:remote-runner.run",
+    "onLanguage:python",
+    "onLanguage:java"
   ],
   "contributes": {
     "commands": [
       {
         "command": "remote-runner.setup",
         "title": "Remote Runner: Setup Workspace",
-        "category": "Remote Runner"
+        "category": "Remote Runner",
+        "icon": "$(settings-gear)"
       },
       {
         "command": "remote-runner.run",
         "title": "Remote Runner: Run on Remote",
-        "category": "Remote Runner"
+        "category": "Remote Runner",
+        "icon": "$(play)"
       }
     ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "remote-runner.run",
+          "group": "navigation",
+          "when": "resourceLangId == python || resourceLangId == java"
+        }
+      ]
+    },
     "snippets": [
       {
         "language": "python",
@@ -45,17 +55,22 @@
       }
     ],
     "configuration": {
-      "title": "Remote Runner",
+      "title": "Remote Runner Settings",
       "properties": {
         "remoteRunner.studentName": {
           "type": "string",
           "default": "student1",
-          "description": "Unique student identifier for branch naming."
+          "description": "Unique identifier used for branch and log naming."
         },
         "remoteRunner.pollInterval": {
           "type": "number",
-          "default": 4000,
-          "description": "Delay in ms between log checks."
+          "default": 2000,
+          "description": "Frequency (ms) to check for remote log updates. Lower values feel more live."
+        },
+        "remoteRunner.timeout": {
+          "type": "number",
+          "default": 180000,
+          "description": "Total time (ms) to wait for a job before timing out."
         }
       }
     }

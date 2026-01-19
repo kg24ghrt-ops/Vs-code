@@ -1,42 +1,58 @@
-name: Python Remote Runner
-on:
-  push:
-    branches: [ 'main' ]
-permissions:
-  contents: write
+name: Atomic Execution Workflow v5
+on: [push]
 
 jobs:
-  run-python:
+  execute-run:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
-      - name: Checkout Code
+      - name: Checkout Exact Commit
         uses: actions/checkout@v4
-
-      # --- EDIT VERSION HERE ---
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-          python-version: '3.12' # Change this to '3.13', '3.x', etc.
+          fetch-depth: 0
+          ref: ${{ github.sha }}
 
-      - name: Execute
-        run: |
-          mkdir -p logs
-          if [ -f "src/main.py" ]; then
-            python3 src/main.py < input/input.txt > logs/output.txt 2>&1
-          else
-            echo "Error: src/main.py not found." > logs/output.txt
-          fi
-          
-          # CRITICAL: DO NOT REMOVE THIS LINE
-          echo -e "\n--- FINISHED ---" >> logs/output.txt
-          
-          TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
-          cp logs/output.txt logs/run_$TIMESTAMP.txt
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
 
-      - name: Push Logs
+      - name: Setup Environment
         run: |
-          git config user.name "RemoteBot"
-          git config user.email "bot@remote.com"
+          mkdir -p logs input
+          git config user.name "Remote Bot"
+          git config user.email "bot@edu.com"
+
+      - name: Parse Metadata & Execute
+        run: |
+          RUN_META=$(ls input/run_*.json 2>/dev/null | sort -r | head -n 1)
+          if [ -z "$RUN_META" ]; then echo "ERROR: No metadata"; exit 1; fi
+
+          RUN_ID=$(python3 - <<EOF
+import json, sys
+with open("$RUN_META") as f:
+    print(json.load(f).get("runId", "unknown"))
+EOF
+          )
+
+          LOG_FILE="logs/output_${RUN_ID}.txt"
+          echo ">>> JOB STARTED <<<" > "$LOG_FILE"
+          set -o pipefail
+          python src/main.py < "input/input_${RUN_ID}.txt" >> "$LOG_FILE" 2>&1 || {
+            echo -e "\n--- EXECUTION FAILED ---" >> "$LOG_FILE"
+            exit 1
+          }
+
+          echo -e "\n--- FINISHED ---" >> "$LOG_FILE"
+
+      - name: Sync Logs to Branch
+        if: always()
+        run: |
+          git fetch origin logs || git checkout -b logs
+          git switch logs
+          ls -t logs/output_*.txt 2>/dev/null | tail -n +21 | xargs rm -f 2>/dev/null || true
           git add logs/
-          git commit -m "Results update" || exit 0
-          git push origin HEAD:logs --force
+          git commit -m "Results: Run ${RUN_ID}" || echo "No changes to commit"
+          git push origin logs --force
