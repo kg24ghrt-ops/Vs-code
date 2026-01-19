@@ -2,7 +2,7 @@
   "name": "remote-runner",
   "displayName": "Remote Runner Pro",
   "description": "Enterprise-grade remote code execution via GitHub Actions.",
-  "version": "1.8.6",
+  "version": "1.8.9",
   "publisher": "student-tools",
   "license": "MIT",
   "engines": {

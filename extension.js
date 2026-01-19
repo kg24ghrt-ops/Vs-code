@@ -24,20 +24,22 @@ function activate(context) {
     // --- HELPER: Configuration ---
     const settings = () => vscode.workspace.getConfiguration('remoteRunner');
 
-    // --- HELPER: Workspace Cleanup ---
-    const cleanupOldFiles = (root) => {
-        const folders = ['input', 'logs'];
-        folders.forEach(folder => {
-            const dir = path.join(root, folder);
-            if (!fs.existsSync(dir)) return;
-            const files = fs.readdirSync(dir);
-            // Keep only the last 10 runs to save space
-            if (files.length > 20) {
-                files.sort().slice(0, files.length - 10).forEach(f => {
-                    try { fs.unlinkSync(path.join(dir, f)); } catch(e) {}
-                });
-            }
-        });
+    // --- HELPER: Template Deployment ---
+    const copyTemp = async (root, file, dest) => {
+        const target = path.join(root, dest);
+        if (fs.existsSync(target)) {
+            const ow = await vscode.window.showWarningMessage(`${dest} exists. Overwrite?`, "Yes", "No");
+            if (ow !== "Yes") return;
+        }
+        const tPath = path.join(context.extensionPath, 'templates', file);
+        if (fs.existsSync(tPath)) fs.writeFileSync(target, fs.readFileSync(tPath));
+    };
+
+    // --- HELPER: Auto-Detection ---
+    const detectLanguage = (root) => {
+        if (fs.existsSync(path.join(root, 'src/main.py'))) return 'Python';
+        if (fs.existsSync(path.join(root, 'src/Main.java'))) return 'Java';
+        return null;
     };
 
     // --- SETUP: Workspace Initialization ---
@@ -45,21 +47,60 @@ function activate(context) {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) return;
 
-        const lang = await vscode.window.showQuickPick(['Python', 'Java'], { placeHolder: 'Project Type' });
-        const repoUrl = await vscode.window.showInputBox({ prompt: "GitHub Repo URL (HTTPS)" });
-        const token = await vscode.window.showInputBox({ prompt: "GitHub Token", password: true });
+        // ignoreFocusOut: true allows you to switch windows to copy links/tokens without the box closing
+        const lang = await vscode.window.showQuickPick(['Python', 'Java'], { 
+            placeHolder: '1. Select Project Type', 
+            ignoreFocusOut: true 
+        });
+        
+        const repoUrl = await vscode.window.showInputBox({ 
+            prompt: "2. Paste GitHub Repo URL", 
+            placeHolder: "https://github.com/user/repo",
+            ignoreFocusOut: true 
+        });
+        
+        const token = await vscode.window.showInputBox({ 
+            prompt: "3. Paste Personal Access Token", 
+            password: true, 
+            ignoreFocusOut: true 
+        });
         
         if (!lang || !repoUrl || !token) return;
-        const authUrl = `https://${token.trim()}@${repoUrl.trim().replace(/^https?:\/\//, "")}`;
+
+        // SANITIZE URL: Removes extra https:// if you pasted it
+        const cleanRepo = repoUrl.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+        const authUrl = `https://${token.trim()}@${cleanRepo}`;
 
         try {
-            if (!fs.existsSync(path.join(root, '.git'))) execSync('git init -b main', { cwd: root });
-            execSync(`git remote add origin ${authUrl} || git remote set-url origin ${authUrl}`, { cwd: root });
+            outputChannel.appendLine(`[SYSTEM] Configuring remote for: ${cleanRepo}`);
+            
+            if (!fs.existsSync(path.join(root, '.git'))) {
+                execSync('git init -b main', { cwd: root });
+            }
+
+            // Force update remote URL
+            try {
+                execSync(`git remote add origin ${authUrl}`, { cwd: root });
+            } catch (e) {
+                execSync(`git remote set-url origin ${authUrl}`, { cwd: root });
+            }
+
             execSync(`git config --local user.name "Runner" && git config --local user.email "r@edu.com"`, { cwd: root });
 
             ['src', 'input', 'logs', '.github/workflows'].forEach(d => fs.mkdirSync(path.join(root, d), { recursive: true }));
+
+            if (lang === 'Python') {
+                await copyTemp(root, 'python_main.txt', 'src/main.py');
+                await copyTemp(root, 'py_workflow.txt', '.github/workflows/main.yml');
+            } else {
+                await copyTemp(root, 'java_main.txt', 'src/Main.java');
+                await copyTemp(root, 'java_workflow.txt', '.github/workflows/main.yml');
+            }
+
             vscode.window.showInformationMessage("Remote Runner: Setup Complete!");
-        } catch (e) { vscode.window.showErrorMessage(`Setup Failed: ${e.message}`); }
+        } catch (e) { 
+            vscode.window.showErrorMessage(`Setup Failed: ${e.message}`); 
+        }
     });
 
     // --- RUN: Smart Interaction & Polling ---
@@ -68,22 +109,25 @@ function activate(context) {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) return;
 
+        const lang = detectLanguage(root) || await vscode.window.showQuickPick(['Python', 'Java']);
+        if (!lang) return;
+
         isRunning = true;
         statusBarItem.text = `$(sync~spin) Running...`;
         outputChannel.clear();
-        cleanupOldFiles(root);
+        outputChannel.appendLine(`[SYSTEM] Starting session: ${lang}`);
 
         const runId = Date.now().toString();
         const inputPath = path.join(root, 'input', `input_${runId}.txt`);
         let lastLen = 0, fetchErrors = 0, startTime = Date.now();
 
-        // 1. Terminal Setup
+        // 1. Terminal Setup (PTY)
         if (!remoteTerminal) {
             remoteTerminal = vscode.window.createTerminal({
                 name: "Remote Interaction",
                 pty: {
                     onDidWrite: writeEmitter.event,
-                    open: () => writeEmitter.fire(`${COLORS.cyan}--- Remote Attached ---\r\n> `),
+                    open: () => writeEmitter.fire(`${COLORS.cyan}--- System Ready ---\r\n> `),
                     handleInput: data => {
                         if (data === '\r' || data === '\n') {
                             fs.appendFileSync(inputPath, inputBuffer + '\n');
@@ -123,7 +167,7 @@ function activate(context) {
                 }
             }
 
-            // 3. Traceable Polling
+            // 3. High-Fidelity Polling
             currentPoller = setInterval(() => {
                 if (Date.now() - startTime > settings().get('timeout', 180000)) return cleanupJob("TIMEOUT", COLORS.red);
 
@@ -143,8 +187,7 @@ function activate(context) {
                     else if (out.includes("--- EXECUTION FAILED ---")) cleanupJob("Failed", COLORS.red);
                 } catch (e) {
                     fetchErrors++;
-                    outputChannel.appendLine(`[TRACE] Fetch attempt ${fetchErrors} pending log creation...`);
-                    if (fetchErrors > settings().get('maxRetries', 10)) cleanupJob("Network Loss", COLORS.red);
+                    if (fetchErrors > settings().get('maxRetries', 15)) cleanupJob("Network Loss", COLORS.red);
                 }
             }, settings().get('pollInterval', 2000));
 
@@ -157,7 +200,7 @@ function activate(context) {
             if (currentPoller) clearInterval(currentPoller);
             isRunning = false;
             statusBarItem.text = `$(play) Run Remote`;
-            outputChannel.appendLine(`\n[SYSTEM] Result: ${msg.toUpperCase()}`);
+            outputChannel.appendLine(`\n[SYSTEM] Job Result: ${msg.toUpperCase()}`);
             writeEmitter.fire(`\r\n${color}${COLORS.bold}>>> JOB ${msg.toUpperCase()}${COLORS.reset}\r\n> `);
         }
     });
