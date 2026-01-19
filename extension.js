@@ -21,10 +21,8 @@ function activate(context) {
     statusBarItem.text = `$(play) Run Remote`;
     statusBarItem.show();
 
-    // --- HELPER: Configuration ---
     const settings = () => vscode.workspace.getConfiguration('remoteRunner');
 
-    // --- HELPER: Template Deployment ---
     const copyTemp = async (root, file, dest) => {
         const target = path.join(root, dest);
         if (fs.existsSync(target)) {
@@ -35,50 +33,46 @@ function activate(context) {
         if (fs.existsSync(tPath)) fs.writeFileSync(target, fs.readFileSync(tPath));
     };
 
-    // --- HELPER: Auto-Detection ---
     const detectLanguage = (root) => {
         if (fs.existsSync(path.join(root, 'src/main.py'))) return 'Python';
         if (fs.existsSync(path.join(root, 'src/Main.java'))) return 'Java';
         return null;
     };
 
-    // --- SETUP: Workspace Initialization ---
+    // --- NEW PATIENT SETUP LOGIC ---
     let setupCmd = vscode.commands.registerCommand('remote-runner.setup', async () => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) return;
 
-        // ignoreFocusOut: true allows you to switch windows to copy links/tokens without the box closing
         const lang = await vscode.window.showQuickPick(['Python', 'Java'], { 
-            placeHolder: '1. Select Project Type', 
+            placeHolder: '1. Choose Language (Python or Java)',
             ignoreFocusOut: true 
         });
-        
-        const repoUrl = await vscode.window.showInputBox({ 
-            prompt: "2. Paste GitHub Repo URL", 
-            placeHolder: "https://github.com/user/repo",
-            ignoreFocusOut: true 
-        });
-        
-        const token = await vscode.window.showInputBox({ 
-            prompt: "3. Paste Personal Access Token", 
-            password: true, 
-            ignoreFocusOut: true 
-        });
-        
-        if (!lang || !repoUrl || !token) return;
+        if (!lang) return;
 
-        // SANITIZE URL: Removes extra https:// if you pasted it
+        // Combined Input: This gives you time to go back and forth between Telegram and VS Code
+        const repoUrl = await vscode.window.showInputBox({ 
+            prompt: "2. Paste GitHub URL (Example: github.com/user/repo)", 
+            ignoreFocusOut: true,
+            validateInput: text => text.length < 5 ? 'Please paste your link!' : null
+        });
+        if (!repoUrl) return;
+
+        const token = await vscode.window.showInputBox({ 
+            prompt: "3. Paste GitHub Token", 
+            password: true,
+            ignoreFocusOut: true,
+            validateInput: text => text.length < 10 ? 'Please paste your token!' : null
+        });
+        if (!token) return;
+
+        // Clean the URL
         const cleanRepo = repoUrl.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
         const authUrl = `https://${token.trim()}@${cleanRepo}`;
 
         try {
-            outputChannel.appendLine(`[SYSTEM] Configuring remote for: ${cleanRepo}`);
+            if (!fs.existsSync(path.join(root, '.git'))) execSync('git init -b main', { cwd: root });
             
-            if (!fs.existsSync(path.join(root, '.git'))) {
-                execSync('git init -b main', { cwd: root });
-            }
-
-            // Force update remote URL
             try {
                 execSync(`git remote add origin ${authUrl}`, { cwd: root });
             } catch (e) {
@@ -86,7 +80,6 @@ function activate(context) {
             }
 
             execSync(`git config --local user.name "Runner" && git config --local user.email "r@edu.com"`, { cwd: root });
-
             ['src', 'input', 'logs', '.github/workflows'].forEach(d => fs.mkdirSync(path.join(root, d), { recursive: true }));
 
             if (lang === 'Python') {
@@ -97,13 +90,10 @@ function activate(context) {
                 await copyTemp(root, 'java_workflow.txt', '.github/workflows/main.yml');
             }
 
-            vscode.window.showInformationMessage("Remote Runner: Setup Complete!");
-        } catch (e) { 
-            vscode.window.showErrorMessage(`Setup Failed: ${e.message}`); 
-        }
+            vscode.window.showInformationMessage("✅ Setup Successful!");
+        } catch (e) { vscode.window.showErrorMessage(`Setup Failed: ${e.message}`); }
     });
 
-    // --- RUN: Smart Interaction & Polling ---
     let runCmd = vscode.commands.registerCommand('remote-runner.run', async () => {
         if (isRunning) return;
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -115,19 +105,16 @@ function activate(context) {
         isRunning = true;
         statusBarItem.text = `$(sync~spin) Running...`;
         outputChannel.clear();
-        outputChannel.appendLine(`[SYSTEM] Starting session: ${lang}`);
-
         const runId = Date.now().toString();
         const inputPath = path.join(root, 'input', `input_${runId}.txt`);
         let lastLen = 0, fetchErrors = 0, startTime = Date.now();
 
-        // 1. Terminal Setup (PTY)
         if (!remoteTerminal) {
             remoteTerminal = vscode.window.createTerminal({
                 name: "Remote Interaction",
                 pty: {
                     onDidWrite: writeEmitter.event,
-                    open: () => writeEmitter.fire(`${COLORS.cyan}--- System Ready ---\r\n> `),
+                    open: () => writeEmitter.fire(`${COLORS.cyan}--- System Attached ---\r\n> `),
                     handleInput: data => {
                         if (data === '\r' || data === '\n') {
                             fs.appendFileSync(inputPath, inputBuffer + '\n');
@@ -150,39 +137,23 @@ function activate(context) {
         remoteTerminal.show();
 
         try {
-            // 2. Metadata & Resilient Sync (3 Retries)
             const sha = execSync('git rev-parse --short HEAD', { cwd: root }).toString().trim();
             fs.writeFileSync(path.join(root, 'input', `run_${runId}.json`), JSON.stringify({ runId, sha }));
             
             outputChannel.appendLine(`[SYSTEM] Pushing commit ${sha}...`);
-            let pushSuccess = false;
-            for (let i = 0; i < 3; i++) {
-                try {
-                    execSync(`git add . && git commit --allow-empty -m "Run ${runId}" && git push origin main`, { cwd: root });
-                    pushSuccess = true;
-                    break;
-                } catch (e) {
-                    outputChannel.appendLine(`[WARNING] Push attempt ${i+1} failed. Retrying...`);
-                    if (i === 2) throw e;
-                }
-            }
+            execSync(`git add . && git commit --allow-empty -m "Run ${runId}" && git push origin main`, { cwd: root });
 
-            // 3. High-Fidelity Polling
             currentPoller = setInterval(() => {
                 if (Date.now() - startTime > settings().get('timeout', 180000)) return cleanupJob("TIMEOUT", COLORS.red);
-
                 try {
                     execSync('git fetch origin logs --force', { cwd: root });
                     const out = execSync(`git show FETCH_HEAD:logs/output_${runId}.txt`, { cwd: root }).toString();
-                    fetchErrors = 0; 
-                    
                     if (out.length > lastLen) {
                         const newChunk = out.substring(lastLen);
                         writeEmitter.fire(newChunk.replace(/\n/g, '\r\n')); 
                         outputChannel.append(newChunk); 
                         lastLen = out.length;
                     }
-
                     if (out.includes("--- FINISHED ---")) cleanupJob("Success", COLORS.green);
                     else if (out.includes("--- EXECUTION FAILED ---")) cleanupJob("Failed", COLORS.red);
                 } catch (e) {
@@ -190,22 +161,16 @@ function activate(context) {
                     if (fetchErrors > settings().get('maxRetries', 15)) cleanupJob("Network Loss", COLORS.red);
                 }
             }, settings().get('pollInterval', 2000));
-
-        } catch (err) { 
-            cleanupJob("Sync Error", COLORS.red);
-            vscode.window.showErrorMessage(`Sync Error: ${err.message}`);
-        }
+        } catch (err) { cleanupJob("Sync Error", COLORS.red); }
 
         function cleanupJob(msg, color) {
             if (currentPoller) clearInterval(currentPoller);
             isRunning = false;
             statusBarItem.text = `$(play) Run Remote`;
-            outputChannel.appendLine(`\n[SYSTEM] Job Result: ${msg.toUpperCase()}`);
             writeEmitter.fire(`\r\n${color}${COLORS.bold}>>> JOB ${msg.toUpperCase()}${COLORS.reset}\r\n> `);
         }
     });
 
     context.subscriptions.push(setupCmd, runCmd);
 }
-
 exports.activate = activate;
