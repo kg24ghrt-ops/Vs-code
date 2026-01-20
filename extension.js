@@ -7,170 +7,216 @@ let isRunning = false;
 let currentPoller = null;
 let writeEmitter = new vscode.EventEmitter();
 let remoteTerminal = null;
-let outputChannel = vscode.window.createOutputChannel("Remote Runner System");
 let inputBuffer = "";
+const outputChannel = vscode.window.createOutputChannel("Remote Runner Pro");
 
-const COLORS = { 
-    reset: "\x1b[0m", green: "\x1b[32m", red: "\x1b[31m", 
-    yellow: "\x1b[33m", cyan: "\x1b[36m", bold: "\x1b[1m" 
-};
+const COLORS = { reset: "\x1b[0m", green: "\x1b[32m", red: "\x1b[31m", cyan: "\x1b[36m", bold: "\x1b[1m" };
 
 function activate(context) {
-    const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    statusBarItem.command = 'remote-runner.run';
-    statusBarItem.text = `$(play) Run Remote`;
-    statusBarItem.show();
-
     const settings = () => vscode.workspace.getConfiguration('remoteRunner');
+    const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    statusBar.command = 'remote-runner.run';
+    statusBar.text = `$(play) Run Remote`;
+    statusBar.show();
 
-    const copyTemp = async (root, file, dest) => {
-        const target = path.join(root, dest);
-        if (fs.existsSync(target)) {
-            const ow = await vscode.window.showWarningMessage(`${dest} exists. Overwrite?`, "Yes", "No");
-            if (ow !== "Yes") return;
-        }
-        const tPath = path.join(context.extensionPath, 'templates', file);
-        if (fs.existsSync(tPath)) fs.writeFileSync(target, fs.readFileSync(tPath));
+    // --- Dynamic Branch Detection ---
+    const getActiveBranch = (root) => {
+        try { return execSync('git rev-parse --abbrev-ref HEAD', { cwd: root }).toString().trim(); }
+        catch (e) { return 'main'; }
     };
 
-    const detectLanguage = (root) => {
-        if (fs.existsSync(path.join(root, 'src/main.py'))) return 'Python';
-        if (fs.existsSync(path.join(root, 'src/Main.java'))) return 'Java';
-        return null;
+    const cleanupOldFiles = (root) => {
+        ['input', 'logs'].forEach(folder => {
+            const dir = path.join(root, folder);
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            const files = fs.readdirSync(dir).sort().filter(f => f.includes('_'));
+            if (files.length > 10) {
+                files.slice(0, files.length - 10).forEach(f => {
+                    try { fs.unlinkSync(path.join(dir, f)); } catch(e) {}
+                });
+            }
+        });
     };
 
-    // --- NEW PATIENT SETUP LOGIC ---
     let setupCmd = vscode.commands.registerCommand('remote-runner.setup', async () => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) return;
 
         const lang = await vscode.window.showQuickPick(['Python', 'Java'], { 
-            placeHolder: '1. Choose Language (Python or Java)',
-            ignoreFocusOut: true 
+            placeHolder: 'Target Language', ignoreFocusOut: true 
         });
         if (!lang) return;
 
-        // Combined Input: This gives you time to go back and forth between Telegram and VS Code
-        const repoUrl = await vscode.window.showInputBox({ 
-            prompt: "2. Paste GitHub URL (Example: github.com/user/repo)", 
-            ignoreFocusOut: true,
-            validateInput: text => text.length < 5 ? 'Please paste your link!' : null
-        });
-        if (!repoUrl) return;
+        const repoUrl = await vscode.window.showInputBox({ prompt: "Paste HTTPS Repo URL", ignoreFocusOut: true });
+        if (!repoUrl || !repoUrl.trim().startsWith("https://")) return vscode.window.showErrorMessage("Valid HTTPS URL required.");
 
-        const token = await vscode.window.showInputBox({ 
-            prompt: "3. Paste GitHub Token", 
-            password: true,
-            ignoreFocusOut: true,
-            validateInput: text => text.length < 10 ? 'Please paste your token!' : null
-        });
+        const token = await vscode.window.showInputBox({ prompt: "Paste Token (Scopes: repo, workflow)", password: true, ignoreFocusOut: true });
         if (!token) return;
 
-        // Clean the URL
-        const cleanRepo = repoUrl.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
-        const authUrl = `https://${token.trim()}@${cleanRepo}`;
-
+        await context.secrets.store('gh_token', token.trim());
+        
         try {
-            if (!fs.existsSync(path.join(root, '.git'))) execSync('git init -b main', { cwd: root });
+            const branch = getActiveBranch(root);
+            if (!fs.existsSync(path.join(root, '.git'))) execSync(`git init -b ${branch}`, { cwd: root });
             
-            try {
-                execSync(`git remote add origin ${authUrl}`, { cwd: root });
-            } catch (e) {
-                execSync(`git remote set-url origin ${authUrl}`, { cwd: root });
-            }
+            try { execSync(`git remote add origin ${repoUrl.trim()}`, { cwd: root }); } 
+            catch (e) { execSync(`git remote set-url origin ${repoUrl.trim()}`, { cwd: root }); }
 
-            execSync(`git config --local user.name "Runner" && git config --local user.email "r@edu.com"`, { cwd: root });
             ['src', 'input', 'logs', '.github/workflows'].forEach(d => fs.mkdirSync(path.join(root, d), { recursive: true }));
-
-            if (lang === 'Python') {
-                await copyTemp(root, 'python_main.txt', 'src/main.py');
-                await copyTemp(root, 'py_workflow.txt', '.github/workflows/main.yml');
-            } else {
-                await copyTemp(root, 'java_main.txt', 'src/Main.java');
-                await copyTemp(root, 'java_workflow.txt', '.github/workflows/main.yml');
-            }
-
-            vscode.window.showInformationMessage("✅ Setup Successful!");
+            
+            // Workflow Injection with Dynamic Branch support
+            const workflowPath = path.join(root, '.github', 'workflows', 'main.yml');
+            const workflowTemplate = lang === 'Python' ? pythonWorkflow(branch) : javaWorkflow(branch);
+            fs.writeFileSync(workflowPath, workflowTemplate);
+            
+            vscode.window.showInformationMessage(`✅ Workspace configured on branch: ${branch}`, { modal: true });
         } catch (e) { vscode.window.showErrorMessage(`Setup Failed: ${e.message}`); }
     });
 
     let runCmd = vscode.commands.registerCommand('remote-runner.run', async () => {
-        if (isRunning) return;
+        if (isRunning) return vscode.window.showWarningMessage("A run is already in progress.");
+        
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!root) return;
+        const token = await context.secrets.get('gh_token');
+        if (!token || !root) return vscode.window.showErrorMessage("Run Setup first.");
 
-        const lang = detectLanguage(root) || await vscode.window.showQuickPick(['Python', 'Java']);
-        if (!lang) return;
+        const activeLang = fs.existsSync(path.join(root, 'src/main.py')) ? 'Python' : 
+                           fs.existsSync(path.join(root, 'src/Main.java')) ? 'Java' : null;
+
+        if (!activeLang) return vscode.window.showErrorMessage("Missing entry point: src/main.py or src/Main.java");
 
         isRunning = true;
-        statusBarItem.text = `$(sync~spin) Running...`;
-        outputChannel.clear();
+        statusBar.text = `$(sync~spin) Running...`;
+        cleanupOldFiles(root);
+        
+        let startTime = Date.now();
+        let fetchErrors = 0, lastLen = 0;
         const runId = Date.now().toString();
+        const branch = getActiveBranch(root);
+        
+        // --- UX: Auto-create input file ---
         const inputPath = path.join(root, 'input', `input_${runId}.txt`);
-        let lastLen = 0, fetchErrors = 0, startTime = Date.now();
-
-        if (!remoteTerminal) {
-            remoteTerminal = vscode.window.createTerminal({
-                name: "Remote Interaction",
-                pty: {
-                    onDidWrite: writeEmitter.event,
-                    open: () => writeEmitter.fire(`${COLORS.cyan}--- System Attached ---\r\n> `),
-                    handleInput: data => {
-                        if (data === '\r' || data === '\n') {
-                            fs.appendFileSync(inputPath, inputBuffer + '\n');
-                            inputBuffer = "";
-                            writeEmitter.fire('\r\n> ');
-                        } else if (data === '\x7f') {
-                            if (inputBuffer.length > 0) {
-                                inputBuffer = inputBuffer.slice(0, -1);
-                                writeEmitter.fire('\b \b');
-                            }
-                        } else {
-                            inputBuffer += data;
-                            writeEmitter.fire(data);
-                        }
-                    },
-                    close: () => { isRunning = false; remoteTerminal = null; }
-                }
-            });
-        }
-        remoteTerminal.show();
+        fs.writeFileSync(inputPath, ""); 
+        fs.writeFileSync(path.join(root, 'input', `run_${runId}.json`), JSON.stringify({ runId }));
 
         try {
-            const sha = execSync('git rev-parse --short HEAD', { cwd: root }).toString().trim();
-            fs.writeFileSync(path.join(root, 'input', `run_${runId}.json`), JSON.stringify({ runId, sha }));
-            
-            outputChannel.appendLine(`[SYSTEM] Pushing commit ${sha}...`);
-            execSync(`git add . && git commit --allow-empty -m "Run ${runId}" && git push origin main`, { cwd: root });
+            const rawUrl = execSync('git remote get-url origin', { cwd: root }).toString().trim();
+            const authUrl = rawUrl.replace("https://", `https://${token}@`);
+
+            if (!remoteTerminal) {
+                remoteTerminal = vscode.window.createTerminal({
+                    name: "Remote Interaction",
+                    pty: {
+                        onDidWrite: writeEmitter.event,
+                        open: () => writeEmitter.fire(`${COLORS.cyan}--- System Attached (Type and press Enter) ---\r\n> `),
+                        handleInput: data => {
+                            if (data === '\r' || data === '\n') {
+                                fs.appendFileSync(inputPath, inputBuffer + '\n');
+                                inputBuffer = "";
+                                writeEmitter.fire('\r\n> ');
+                            } else if (data === '\x7f') {
+                                if (inputBuffer.length > 0) {
+                                    inputBuffer = inputBuffer.slice(0, -1);
+                                    writeEmitter.fire('\b \b');
+                                }
+                            } else {
+                                inputBuffer += data;
+                                writeEmitter.fire(data);
+                            }
+                        },
+                        close: () => { isRunning = false; if (currentPoller) clearInterval(currentPoller); }
+                    }
+                });
+            }
+            remoteTerminal.show();
+
+            execSync(`git add . && git commit --allow-empty -m "Run ${runId}" && git push ${authUrl} ${branch}`, { cwd: root });
 
             currentPoller = setInterval(() => {
-                if (Date.now() - startTime > settings().get('timeout', 180000)) return cleanupJob("TIMEOUT", COLORS.red);
+                const timeoutLimit = settings().get('timeout', 180000);
+                if (Date.now() - startTime > timeoutLimit) return finishJob("TIMEOUT", COLORS.red, runId);
+                
                 try {
                     execSync('git fetch origin logs --force', { cwd: root });
-                    const out = execSync(`git show FETCH_HEAD:logs/output_${runId}.txt`, { cwd: root }).toString();
+                    let out = "";
+                    try { out = execSync(`git show FETCH_HEAD:logs/output_${runId}.txt`, { cwd: root }).toString(); } catch (e) { return; }
+                    
                     if (out.length > lastLen) {
                         const newChunk = out.substring(lastLen);
                         writeEmitter.fire(newChunk.replace(/\n/g, '\r\n')); 
-                        outputChannel.append(newChunk); 
                         lastLen = out.length;
                     }
-                    if (out.includes("--- FINISHED ---")) cleanupJob("Success", COLORS.green);
-                    else if (out.includes("--- EXECUTION FAILED ---")) cleanupJob("Failed", COLORS.red);
+
+                    if (out.includes("--- FINISHED ---")) finishJob("Success", COLORS.green, runId);
+                    else if (out.includes("--- EXECUTION FAILED ---")) finishJob("Failed", COLORS.red, runId);
                 } catch (e) {
-                    fetchErrors++;
-                    if (fetchErrors > settings().get('maxRetries', 15)) cleanupJob("Network Loss", COLORS.red);
+                    if (fetchErrors++ > 20) finishJob("Network Loss", COLORS.red, runId);
                 }
             }, settings().get('pollInterval', 2000));
-        } catch (err) { cleanupJob("Sync Error", COLORS.red); }
 
-        function cleanupJob(msg, color) {
+        } catch (err) { finishJob(err.message, COLORS.red, runId); }
+
+        function finishJob(msg, color, id) {
             if (currentPoller) clearInterval(currentPoller);
             isRunning = false;
-            statusBarItem.text = `$(play) Run Remote`;
+            statusBar.text = `$(play) Run Remote`;
+            inputBuffer = ""; 
             writeEmitter.fire(`\r\n${color}${COLORS.bold}>>> JOB ${msg.toUpperCase()}${COLORS.reset}\r\n> `);
+            
+            // --- UX: Notification with runId ---
+            const message = `Run ${id}: ${msg}`;
+            if (msg === "Success") vscode.window.showInformationMessage(message);
+            else vscode.window.showErrorMessage(message);
         }
     });
 
-    context.subscriptions.push(setupCmd, runCmd);
+    context.subscriptions.push(setupCmd, runCmd, statusBar);
 }
+
+// --- FULL FUNCTIONAL WORKFLOWS ---
+const pythonWorkflow = (branch) => `name: Remote Run
+on:
+  push:
+    branches: [ ${branch} ]
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Run
+        run: |
+          mkdir -p logs
+          ID=$(ls input/run_*.json | xargs -n1 basename | cut -d'_' -f2 | cut -d'.' -f1)
+          python3 src/main.py < input/input_$ID.txt > logs/output_$ID.txt 2>&1 || echo "--- EXECUTION FAILED ---" >> logs/output_$ID.txt
+          echo "--- FINISHED ---" >> logs/output_$ID.txt
+      - name: Upload
+        run: |
+          git config user.name "Runner"
+          git config user.email "r@edu.com"
+          git add logs/ && git commit -m "Logs" && git push origin ${branch}:logs --force`;
+
+const javaWorkflow = (branch) => `name: Remote Run
+on:
+  push:
+    branches: [ ${branch} ]
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Run
+        run: |
+          mkdir -p logs
+          ID=$(ls input/run_*.json | xargs -n1 basename | cut -d'_' -f2 | cut -d'.' -f1)
+          javac src/Main.java
+          java -cp src Main < input/input_$ID.txt > logs/output_$ID.txt 2>&1 || echo "--- EXECUTION FAILED ---" >> logs/output_$ID.txt
+          echo "--- FINISHED ---" >> logs/output_$ID.txt
+      - name: Upload
+        run: |
+          git config user.name "Runner"
+          git config user.email "r@edu.com"
+          git add logs/ && git commit -m "Logs" && git push origin ${branch}:logs --force`;
+
 exports.activate = activate;
