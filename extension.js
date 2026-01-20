@@ -19,7 +19,6 @@ function activate(context) {
     statusBar.text = `$(play) Run Remote`;
     statusBar.show();
 
-    // --- Dynamic Branch Detection ---
     const getActiveBranch = (root) => {
         try { return execSync('git rev-parse --abbrev-ref HEAD', { cwd: root }).toString().trim(); }
         catch (e) { return 'main'; }
@@ -41,49 +40,34 @@ function activate(context) {
     let setupCmd = vscode.commands.registerCommand('remote-runner.setup', async () => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) return;
-
-        const lang = await vscode.window.showQuickPick(['Python', 'Java'], { 
-            placeHolder: 'Target Language', ignoreFocusOut: true 
-        });
+        const lang = await vscode.window.showQuickPick(['Python', 'Java'], { placeHolder: 'Target Language', ignoreFocusOut: true });
         if (!lang) return;
-
         const repoUrl = await vscode.window.showInputBox({ prompt: "Paste HTTPS Repo URL", ignoreFocusOut: true });
         if (!repoUrl || !repoUrl.trim().startsWith("https://")) return vscode.window.showErrorMessage("Valid HTTPS URL required.");
-
         const token = await vscode.window.showInputBox({ prompt: "Paste Token (Scopes: repo, workflow)", password: true, ignoreFocusOut: true });
         if (!token) return;
-
         await context.secrets.store('gh_token', token.trim());
         
         try {
             const branch = getActiveBranch(root);
             if (!fs.existsSync(path.join(root, '.git'))) execSync(`git init -b ${branch}`, { cwd: root });
-            
             try { execSync(`git remote add origin ${repoUrl.trim()}`, { cwd: root }); } 
             catch (e) { execSync(`git remote set-url origin ${repoUrl.trim()}`, { cwd: root }); }
-
             ['src', 'input', 'logs', '.github/workflows'].forEach(d => fs.mkdirSync(path.join(root, d), { recursive: true }));
-            
-            // Workflow Injection with Dynamic Branch support
-            const workflowPath = path.join(root, '.github', 'workflows', 'main.yml');
-            const workflowTemplate = lang === 'Python' ? pythonWorkflow(branch) : javaWorkflow(branch);
-            fs.writeFileSync(workflowPath, workflowTemplate);
-            
-            vscode.window.showInformationMessage(`✅ Workspace configured on branch: ${branch}`, { modal: true });
+            fs.writeFileSync(path.join(root, '.github', 'workflows', 'main.yml'), lang === 'Python' ? pythonWorkflow(branch) : javaWorkflow(branch));
+            vscode.window.showInformationMessage(`✅ Configured on branch: ${branch}`);
         } catch (e) { vscode.window.showErrorMessage(`Setup Failed: ${e.message}`); }
     });
 
     let runCmd = vscode.commands.registerCommand('remote-runner.run', async () => {
-        if (isRunning) return vscode.window.showWarningMessage("A run is already in progress.");
-        
+        if (isRunning) return;
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const token = await context.secrets.get('gh_token');
         if (!token || !root) return vscode.window.showErrorMessage("Run Setup first.");
 
         const activeLang = fs.existsSync(path.join(root, 'src/main.py')) ? 'Python' : 
                            fs.existsSync(path.join(root, 'src/Main.java')) ? 'Java' : null;
-
-        if (!activeLang) return vscode.window.showErrorMessage("Missing entry point: src/main.py or src/Main.java");
+        if (!activeLang) return vscode.window.showErrorMessage("Missing src/main.py or src/Main.java");
 
         isRunning = true;
         statusBar.text = `$(sync~spin) Running...`;
@@ -93,8 +77,6 @@ function activate(context) {
         let fetchErrors = 0, lastLen = 0;
         const runId = Date.now().toString();
         const branch = getActiveBranch(root);
-        
-        // --- UX: Auto-create input file ---
         const inputPath = path.join(root, 'input', `input_${runId}.txt`);
         fs.writeFileSync(inputPath, ""); 
         fs.writeFileSync(path.join(root, 'input', `run_${runId}.json`), JSON.stringify({ runId }));
@@ -108,7 +90,7 @@ function activate(context) {
                     name: "Remote Interaction",
                     pty: {
                         onDidWrite: writeEmitter.event,
-                        open: () => writeEmitter.fire(`${COLORS.cyan}--- System Attached (Type and press Enter) ---\r\n> `),
+                        open: () => writeEmitter.fire(`${COLORS.cyan}--- System Attached ---\r\n> `),
                         handleInput: data => {
                             if (data === '\r' || data === '\n') {
                                 fs.appendFileSync(inputPath, inputBuffer + '\n');
@@ -124,22 +106,35 @@ function activate(context) {
                                 writeEmitter.fire(data);
                             }
                         },
-                        close: () => { isRunning = false; if (currentPoller) clearInterval(currentPoller); }
+                        close: () => { isRunning = false; }
                     }
                 });
             }
             remoteTerminal.show();
 
+            // Push to trigger Action
             execSync(`git add . && git commit --allow-empty -m "Run ${runId}" && git push ${authUrl} ${branch}`, { cwd: root });
 
+            // --- REBUILT POLLER: Fixes "Network Loss" & Log Mismatch ---
             currentPoller = setInterval(() => {
                 const timeoutLimit = settings().get('timeout', 180000);
                 if (Date.now() - startTime > timeoutLimit) return finishJob("TIMEOUT", COLORS.red, runId);
                 
                 try {
-                    execSync('git fetch origin logs --force', { cwd: root });
+                    // 1. Forced Fetch: Syncs remote 'logs' branch to local 'logs' ref regardless of history
+                    try {
+                        execSync('git fetch origin logs:logs --force', { cwd: root, stdio: 'ignore' });
+                    } catch (fErr) {
+                        // Ignore fetch failures for the first 45 seconds (waiting for Action to start/push)
+                        if (Date.now() - startTime < 45000) return; 
+                        throw fErr; 
+                    }
+
                     let out = "";
-                    try { out = execSync(`git show FETCH_HEAD:logs/output_${runId}.txt`, { cwd: root }).toString(); } catch (e) { return; }
+                    try { 
+                        // 2. Read from the forced local 'logs' ref
+                        out = execSync(`git show logs:logs/output_${runId}.txt`, { cwd: root }).toString(); 
+                    } catch (e) { return; } // File not pushed to branch yet
                     
                     if (out.length > lastLen) {
                         const newChunk = out.substring(lastLen);
@@ -150,7 +145,7 @@ function activate(context) {
                     if (out.includes("--- FINISHED ---")) finishJob("Success", COLORS.green, runId);
                     else if (out.includes("--- EXECUTION FAILED ---")) finishJob("Failed", COLORS.red, runId);
                 } catch (e) {
-                    if (fetchErrors++ > 20) finishJob("Network Loss", COLORS.red, runId);
+                    if (fetchErrors++ > 30) finishJob("Network Loss", COLORS.red, runId);
                 }
             }, settings().get('pollInterval', 2000));
 
@@ -162,18 +157,15 @@ function activate(context) {
             statusBar.text = `$(play) Run Remote`;
             inputBuffer = ""; 
             writeEmitter.fire(`\r\n${color}${COLORS.bold}>>> JOB ${msg.toUpperCase()}${COLORS.reset}\r\n> `);
-            
-            // --- UX: Notification with runId ---
-            const message = `Run ${id}: ${msg}`;
-            if (msg === "Success") vscode.window.showInformationMessage(message);
-            else vscode.window.showErrorMessage(message);
+            if (msg === "Success") vscode.window.showInformationMessage(`Run ${id}: Success`);
+            else vscode.window.showErrorMessage(`Run ${id}: ${msg}`);
         }
     });
 
     context.subscriptions.push(setupCmd, runCmd, statusBar);
 }
 
-// --- FULL FUNCTIONAL WORKFLOWS ---
+// --- WORKFLOWS ---
 const pythonWorkflow = (branch) => `name: Remote Run
 on:
   push:
