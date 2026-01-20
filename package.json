@@ -6,7 +6,7 @@
   "publisher": "student-tools",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.80.0"
+    "vscode": "^1.0.8"
   },
   "categories": [
     "Education",
