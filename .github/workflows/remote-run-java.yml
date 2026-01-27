@@ -1,0 +1,45 @@
+name: Remote Run - Java
+on:
+  workflow_dispatch:
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Java (reads input/input_<ID>.txt)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p logs
+          ID_FILE=$(ls -t input/run_*.json 2>/dev/null | head -n 1 || true)
+          if [ -z "$ID_FILE" ]; then
+            echo "No run_*.json found" > logs/output_unknown.txt
+            exit 0
+          fi
+          ID=$(basename "$ID_FILE" | cut -d'_' -f2 | cut -d'.' -f1)
+          if [ -f input/input_$ID.txt ]; then
+            javac src/Main.java
+            java -cp src Main < input/input_$ID.txt > logs/output_$ID.txt 2>&1 || echo '--- EXECUTION FAILED ---' >> logs/output_$ID.txt
+          else
+            echo "No input file: input/input_$ID.txt" > logs/output_$ID.txt
+          fi
+          echo '--- FINISHED ---' >> logs/output_$ID.txt
+
+      - name: Push logs branch (safe, logs only)
+        shell: bash
+        env:
+          GIT_AUTHOR_NAME: runner
+          GIT_AUTHOR_EMAIL: runner@local
+        run: |
+          git config user.name "$GIT_AUTHOR_NAME"
+          git config user.email "$GIT_AUTHOR_EMAIL"
+          git checkout --orphan tmp-logs
+          git rm -rf . || true
+          mkdir -p logs
+          git add logs/ || true
+          git commit -m "Logs for run $ID" || true
+          git push origin HEAD:logs --force

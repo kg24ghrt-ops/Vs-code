@@ -2,7 +2,7 @@
   "name": "remote-runner",
   "displayName": "Remote Runner Pro",
   "description": "Remote code execution for Python and Java using GitHub Actions.",
-  "version": "3.1.0",
+  "version": "3.1.2",
   "publisher": "student-tools",
   "license": "MIT",
   "engines": {
