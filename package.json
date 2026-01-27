@@ -1,12 +1,19 @@
 {
   "name": "remote-runner",
   "displayName": "Remote Runner Pro",
-  "description": "Enterprise-grade remote code execution via GitHub Actions.",
-  "version": "3.0.9",
+  "description": "Remote code execution for Python and Java using GitHub Actions.",
+  "version": "3.1.0",
   "publisher": "student-tools",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.85.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/<your-org-or-user>/remote-runner"
+  },
+  "bugs": {
+    "url": "https://github.com/<your-org-or-user>/remote-runner/issues"
   },
   "categories": [
     "Education",
@@ -15,8 +22,11 @@
   ],
   "main": "./extension.js",
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:remote-runner.setup",
-    "onCommand:remote-runner.run"
+    "onCommand:remote-runner.run",
+    "onCommand:remote-runner.installGh",
+    "onCommand:remote-runner.openWebTerminal"
   ],
   "contributes": {
     "commands": [
@@ -29,6 +39,16 @@
         "command": "remote-runner.run",
         "title": "Remote Runner: Run on Remote",
         "category": "Remote Runner"
+      },
+      {
+        "command": "remote-runner.installGh",
+        "title": "Remote Runner: Install GitHub CLI (gh)",
+        "category": "Remote Runner"
+      },
+      {
+        "command": "remote-runner.openWebTerminal",
+        "title": "Remote Runner: Open Web Terminal",
+        "category": "Remote Runner"
       }
     ],
     "menus": {
@@ -36,7 +56,25 @@
         {
           "command": "remote-runner.run",
           "group": "navigation",
-          "when": "resourceLangId == python || resourceLangId == java"
+          "when": "editorLangId == python || editorLangId == java"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "remote-runner.run",
+          "when": ""
+        },
+        {
+          "command": "remote-runner.setup",
+          "when": ""
+        },
+        {
+          "command": "remote-runner.installGh",
+          "when": ""
+        },
+        {
+          "command": "remote-runner.openWebTerminal",
+          "when": ""
         }
       ]
     },
@@ -61,12 +99,21 @@
         "remoteRunner.pollInterval": {
           "type": "number",
           "default": 2000,
-          "description": "Frequency (ms) to check for remote log updates."
+          "minimum": 500,
+          "maximum": 10000,
+          "description": "Frequency (ms) to check for remote log updates. 500-10000 recommended."
         },
         "remoteRunner.timeout": {
           "type": "number",
           "default": 180000,
-          "description": "Total time (ms) to wait for a job before timing out."
+          "minimum": 30000,
+          "maximum": 900000,
+          "description": "Total time (ms) to wait for a job before timing out. 30s–15min recommended."
+        },
+        "remoteRunner.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable debug logging to the Remote Runner output channel."
         }
       }
     }
