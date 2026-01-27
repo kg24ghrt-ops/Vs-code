@@ -2,11 +2,11 @@
   "name": "remote-runner",
   "displayName": "Remote Runner Pro",
   "description": "Enterprise-grade remote code execution via GitHub Actions.",
-  "version": "2.0.9",
+  "version": "2.8.9",
   "publisher": "student-tools",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.0.8"
+    "vscode": "^1.75.0"
   },
   "categories": [
     "Education",
@@ -16,23 +16,19 @@
   "main": "./extension.js",
   "activationEvents": [
     "onCommand:remote-runner.setup",
-    "onCommand:remote-runner.run",
-    "onLanguage:python",
-    "onLanguage:java"
+    "onCommand:remote-runner.run"
   ],
   "contributes": {
     "commands": [
       {
         "command": "remote-runner.setup",
         "title": "Remote Runner: Setup Workspace",
-        "category": "Remote Runner",
-        "icon": "$(settings-gear)"
+        "category": "Remote Runner"
       },
       {
         "command": "remote-runner.run",
         "title": "Remote Runner: Run on Remote",
-        "category": "Remote Runner",
-        "icon": "$(play)"
+        "category": "Remote Runner"
       }
     ],
     "menus": {
@@ -60,12 +56,12 @@
         "remoteRunner.studentName": {
           "type": "string",
           "default": "student1",
-          "description": "Unique identifier used for branch and log naming."
+          "description": "Unique identifier used for run metadata and commit messages."
         },
         "remoteRunner.pollInterval": {
           "type": "number",
           "default": 2000,
-          "description": "Frequency (ms) to check for remote log updates. Lower values feel more live."
+          "description": "Frequency (ms) to check for remote log updates."
         },
         "remoteRunner.timeout": {
           "type": "number",

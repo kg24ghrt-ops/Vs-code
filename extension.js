@@ -28,9 +28,22 @@ function activate(context) {
         ['input', 'logs'].forEach(folder => {
             const dir = path.join(root, folder);
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            const files = fs.readdirSync(dir).sort().filter(f => f.includes('_'));
+            // Only keep the 10 newest run files; sort by mtime
+            const files = fs.readdirSync(dir)
+                .filter(f => f.includes('_'))
+                .map(f => {
+                    try {
+                        return { name: f, mtime: fs.statSync(path.join(dir, f)).mtime.getTime() };
+                    } catch (e) {
+                        return { name: f, mtime: 0 };
+                    }
+                })
+                .sort((a, b) => a.mtime - b.mtime)
+                .map(x => x.name);
+
             if (files.length > 10) {
-                files.slice(0, files.length - 10).forEach(f => {
+                const toRemove = files.slice(0, files.length - 10);
+                toRemove.forEach(f => {
                     try { fs.unlinkSync(path.join(dir, f)); } catch(e) {}
                 });
             }
@@ -42,16 +55,16 @@ function activate(context) {
         if (!root) return;
         const lang = await vscode.window.showQuickPick(['Python', 'Java'], { placeHolder: 'Target Language', ignoreFocusOut: true });
         if (!lang) return;
-        const repoUrl = await vscode.window.showInputBox({ prompt: "Paste HTTPS Repo URL", ignoreFocusOut: true });
-        if (!repoUrl || !repoUrl.trim().startsWith("https://")) return vscode.window.showErrorMessage("Valid HTTPS URL required.");
+        const repoUrl = await vscode.window.showInputBox({ prompt: "Paste HTTPS or SSH Repo URL", ignoreFocusOut: true });
+        if (!repoUrl) return vscode.window.showErrorMessage("Valid repo URL required.");
         const token = await vscode.window.showInputBox({ prompt: "Paste Token (Scopes: repo, workflow)", password: true, ignoreFocusOut: true });
         if (!token) return;
         await context.secrets.store('gh_token', token.trim());
-        
+
         try {
             const branch = getActiveBranch(root);
             if (!fs.existsSync(path.join(root, '.git'))) execSync(`git init -b ${branch}`, { cwd: root });
-            try { execSync(`git remote add origin ${repoUrl.trim()}`, { cwd: root }); } 
+            try { execSync(`git remote add origin ${repoUrl.trim()}`, { cwd: root }); }
             catch (e) { execSync(`git remote set-url origin ${repoUrl.trim()}`, { cwd: root }); }
             ['src', 'input', 'logs', '.github/workflows'].forEach(d => fs.mkdirSync(path.join(root, d), { recursive: true }));
             fs.writeFileSync(path.join(root, '.github', 'workflows', 'main.yml'), lang === 'Python' ? pythonWorkflow(branch) : javaWorkflow(branch));
@@ -65,25 +78,36 @@ function activate(context) {
         const token = await context.secrets.get('gh_token');
         if (!token || !root) return vscode.window.showErrorMessage("Run Setup first.");
 
-        const activeLang = fs.existsSync(path.join(root, 'src/main.py')) ? 'Python' : 
+        const activeLang = fs.existsSync(path.join(root, 'src/main.py')) ? 'Python' :
                            fs.existsSync(path.join(root, 'src/Main.java')) ? 'Java' : null;
         if (!activeLang) return vscode.window.showErrorMessage("Missing src/main.py or src/Main.java");
 
         isRunning = true;
         statusBar.text = `$(sync~spin) Running...`;
         cleanupOldFiles(root);
-        
+
         let startTime = Date.now();
         let fetchErrors = 0, lastLen = 0;
         const runId = Date.now().toString();
         const branch = getActiveBranch(root);
         const inputPath = path.join(root, 'input', `input_${runId}.txt`);
-        fs.writeFileSync(inputPath, ""); 
+        fs.writeFileSync(inputPath, "");
         fs.writeFileSync(path.join(root, 'input', `run_${runId}.json`), JSON.stringify({ runId }));
 
         try {
             const rawUrl = execSync('git remote get-url origin', { cwd: root }).toString().trim();
-            const authUrl = rawUrl.replace("https://", `https://${token}@`);
+
+            // Convert SSH remote to HTTPS if needed, then inject token safely by temporarily setting remote
+            let httpsUrl = rawUrl;
+            if (rawUrl.startsWith('git@')) {
+                // convert git@github.com:OWNER/REPO.git to https://github.com/OWNER/REPO.git
+                httpsUrl = rawUrl.replace(/^git@([^:]+):/, 'https://$1/');
+            }
+            if (!httpsUrl.startsWith('https://')) {
+                throw new Error('Remote URL must be HTTPS or SSH style pointing to a git host.');
+            }
+            const authUrl = httpsUrl.replace('https://', `https://${token}@`);
+            const origRemoteUrl = rawUrl;
 
             if (!remoteTerminal) {
                 remoteTerminal = vscode.window.createTerminal({
@@ -112,33 +136,37 @@ function activate(context) {
             }
             remoteTerminal.show();
 
-            // Push to trigger Action
-            execSync(`git add . && git commit --allow-empty -m "Run ${runId}" && git push ${authUrl} ${branch}`, { cwd: root });
+            // Temporarily set remote to authUrl for the push, then restore original URL
+            try {
+                execSync(`git remote set-url origin ${authUrl}`, { cwd: root });
+                execSync(`git add . && git commit --allow-empty -m "Run ${runId}" && git push origin ${branch}`, { cwd: root });
+            } finally {
+                try { execSync(`git remote set-url origin ${origRemoteUrl}`, { cwd: root }); } catch (e) {}
+            }
 
-            // --- REBUILT POLLER: Fixes "Network Loss" & Log Mismatch ---
+            // Poll logs (REBUILT POLLER)
             currentPoller = setInterval(() => {
                 const timeoutLimit = settings().get('timeout', 180000);
                 if (Date.now() - startTime > timeoutLimit) return finishJob("TIMEOUT", COLORS.red, runId);
-                
+
                 try {
                     // 1. Forced Fetch: Syncs remote 'logs' branch to local 'logs' ref regardless of history
                     try {
                         execSync('git fetch origin logs:logs --force', { cwd: root, stdio: 'ignore' });
                     } catch (fErr) {
                         // Ignore fetch failures for the first 45 seconds (waiting for Action to start/push)
-                        if (Date.now() - startTime < 45000) return; 
-                        throw fErr; 
+                        if (Date.now() - startTime < 45000) return;
+                        throw fErr;
                     }
 
                     let out = "";
-                    try { 
-                        // 2. Read from the forced local 'logs' ref
-                        out = execSync(`git show logs:logs/output_${runId}.txt`, { cwd: root }).toString(); 
+                    try {
+                        out = execSync(`git show logs:logs/output_${runId}.txt`, { cwd: root }).toString();
                     } catch (e) { return; } // File not pushed to branch yet
-                    
+
                     if (out.length > lastLen) {
                         const newChunk = out.substring(lastLen);
-                        writeEmitter.fire(newChunk.replace(/\n/g, '\r\n')); 
+                        writeEmitter.fire(newChunk.replace(/\n/g, '\r\n'));
                         lastLen = out.length;
                     }
 
@@ -149,13 +177,13 @@ function activate(context) {
                 }
             }, settings().get('pollInterval', 2000));
 
-        } catch (err) { finishJob(err.message, COLORS.red, runId); }
+        } catch (err) { finishJob(err.message || String(err), COLORS.red, runId); }
 
         function finishJob(msg, color, id) {
             if (currentPoller) clearInterval(currentPoller);
             isRunning = false;
             statusBar.text = `$(play) Run Remote`;
-            inputBuffer = ""; 
+            inputBuffer = "";
             writeEmitter.fire(`\r\n${color}${COLORS.bold}>>> JOB ${msg.toUpperCase()}${COLORS.reset}\r\n> `);
             if (msg === "Success") vscode.window.showInformationMessage(`Run ${id}: Success`);
             else vscode.window.showErrorMessage(`Run ${id}: ${msg}`);
@@ -177,16 +205,34 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - name: Run
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p logs
-          ID=$(ls input/run_*.json | xargs -n1 basename | cut -d'_' -f2 | cut -d'.' -f1)
-          python3 src/main.py < input/input_$ID.txt > logs/output_$ID.txt 2>&1 || echo "--- EXECUTION FAILED ---" >> logs/output_$ID.txt
+          ID_FILE=$(ls -t input/run_*.json 2>/dev/null | head -n 1 || true)
+          if [ -z "$ID_FILE" ]; then
+            echo "No run_*.json found, nothing to do"
+            exit 0
+          fi
+          ID=$(basename "$ID_FILE" | cut -d'_' -f2 | cut -d'.' -f1)
+          if [ -z "$ID" ]; then
+            echo "Failed to parse ID from: $ID_FILE" > logs/output_unknown.txt
+            exit 1
+          fi
+          if [ -f input/input_$ID.txt ]; then
+            python3 src/main.py < input/input_$ID.txt > logs/output_$ID.txt 2>&1 || echo "--- EXECUTION FAILED ---" >> logs/output_$ID.txt
+          else
+            echo "No input file: input/input_$ID.txt" > logs/output_$ID.txt
+          fi
           echo "--- FINISHED ---" >> logs/output_$ID.txt
-      - name: Upload
+      - name: Upload logs
+        shell: bash
         run: |
           git config user.name "Runner"
           git config user.email "r@edu.com"
-          git add logs/ && git commit -m "Logs" && git push origin ${branch}:logs --force`;
+          git add logs/ || true
+          git commit -m "Logs" || true
+          git push origin ${branch}:logs --force`;
 
 const javaWorkflow = (branch) => `name: Remote Run
 on:
@@ -199,16 +245,34 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - name: Run
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p logs
-          ID=$(ls input/run_*.json | xargs -n1 basename | cut -d'_' -f2 | cut -d'.' -f1)
-          javac src/Main.java
-          java -cp src Main < input/input_$ID.txt > logs/output_$ID.txt 2>&1 || echo "--- EXECUTION FAILED ---" >> logs/output_$ID.txt
+          ID_FILE=$(ls -t input/run_*.json 2>/dev/null | head -n 1 || true)
+          if [ -z "$ID_FILE" ]; then
+            echo "No run_*.json found, nothing to do"
+            exit 0
+          fi
+          ID=$(basename "$ID_FILE" | cut -d'_' -f2 | cut -d'.' -f1)
+          if [ -z "$ID" ]; then
+            echo "Failed to parse ID from: $ID_FILE" > logs/output_unknown.txt
+            exit 1
+          fi
+          if [ -f input/input_$ID.txt ]; then
+            javac src/Main.java
+            java -cp src Main < input/input_$ID.txt > logs/output_$ID.txt 2>&1 || echo "--- EXECUTION FAILED ---" >> logs/output_$ID.txt
+          else
+            echo "No input file: input/input_$ID.txt" > logs/output_$ID.txt
+          fi
           echo "--- FINISHED ---" >> logs/output_$ID.txt
-      - name: Upload
+      - name: Upload logs
+        shell: bash
         run: |
           git config user.name "Runner"
           git config user.email "r@edu.com"
-          git add logs/ && git commit -m "Logs" && git push origin ${branch}:logs --force`;
+          git add logs/ || true
+          git commit -m "Logs" || true
+          git push origin ${branch}:logs --force`;
 
 exports.activate = activate;
