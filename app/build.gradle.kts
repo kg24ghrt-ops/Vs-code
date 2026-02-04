@@ -83,42 +83,42 @@ dependencies {
     implementation(project(":feature-chat"))
     implementation(project(":feature-login"))
 
-    // material
+    // AndroidX & Jetpack
     implementation(libs.androidx.appcompat)
-
-    // Compose
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.compose.runtime)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+
+    // Compose Material 3
+    implementation("androidx.compose.material3:material3:1.2.0") // Add this
+    implementation("androidx.compose.material3:material3-window-size-class:1.2.0") // Optional if you want responsive layout support
+
+    // Compose tooling
     implementation(libs.androidx.compose.ui.tooling)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.constraintlayout)
 
-    // **Material 3**
-    implementation("androidx.compose.material3:material3:1.2.0") // latest stable
-    implementation("androidx.compose.material3:material3-window-size-class:1.2.0")
-
-    // jetpack
-    implementation(libs.androidx.startup)
+    // Hilt
     implementation(libs.hilt.android)
     implementation(libs.androidx.hilt.navigation.compose)
     ksp(libs.hilt.compiler)
 
-    // image loading
+    // Image loading
     implementation(libs.landscapist.glide)
 
-    // logger
+    // Logger
     implementation(libs.stream.log)
 
-    // crash tracer & restorer
+    // Crash tracer & restorer
     implementation(libs.snitcher)
 
-    // firebase
+    // Firebase
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.crashlytics)
 
-    // baseline profile
+    // Baseline profile
     baselineProfile(project(":benchmark"))
 }
 
