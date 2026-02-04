@@ -107,7 +107,7 @@ dependencies {
     implementation("com.github.skydoves:landscapist-glide:2.3.2")
 
     // Logger
-    implementation("io.github.stream:log:1.0.0")
+    implementation("com.jakewharton.timber:timber:5.0.1")
 
     // Crash tracer & restorer
     implementation("com.github.skydoves:snitcher:1.0.0")
