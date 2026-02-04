@@ -84,39 +84,39 @@ dependencies {
     implementation(project(":feature-login"))
 
     // AndroidX & Jetpack
-    implementation(libs.androidx.appcompat)
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation("androidx.appcompat:appcompat:1.7.0") // latest stable
+    implementation("androidx.activity:activity-compose:1.9.0") // activity-compose
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2") // lifecycle runtime compose
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2") // viewmodel compose
 
     // Compose Material 3
-    implementation("androidx.compose.material3:material3:1.2.0") // Add this
-    implementation("androidx.compose.material3:material3-window-size-class:1.2.0") // Optional if you want responsive layout support
+    implementation("androidx.compose.material3:material3:1.2.0") // Material 3
+    implementation("androidx.compose.material3:material3-window-size-class:1.2.0") // optional
 
     // Compose tooling
-    implementation(libs.androidx.compose.ui.tooling)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.compose.constraintlayout)
+    implementation("androidx.compose.ui:ui-tooling:1.6.0")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.6.0")
+    implementation("androidx.constraintlayout:constraintlayout-compose:1.1.1")
 
     // Hilt
-    implementation(libs.hilt.android)
-    implementation(libs.androidx.hilt.navigation.compose)
-    ksp(libs.hilt.compiler)
+    implementation("com.google.dagger:hilt-android:2.48")
+    implementation("androidx.hilt:hilt-navigation-compose:1.1.0-alpha01")
+    ksp("com.google.dagger:hilt-compiler:2.48")
 
     // Image loading
-    implementation(libs.landscapist.glide)
+    implementation("com.github.skydoves:landscapist-glide:2.3.2")
 
     // Logger
-    implementation(libs.stream.log)
+    implementation("io.github.stream:log:1.0.0")
 
     // Crash tracer & restorer
-    implementation(libs.snitcher)
+    implementation("com.github.skydoves:snitcher:1.0.0")
 
     // Firebase
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.analytics)
-    implementation(libs.firebase.messaging)
-    implementation(libs.firebase.crashlytics)
+    implementation(platform("com.google.firebase:firebase-bom:32.2.0"))
+    implementation("com.google.firebase:firebase-analytics-ktx")
+    implementation("com.google.firebase:firebase-messaging-ktx")
+    implementation("com.google.firebase:firebase-crashlytics-ktx")
 
     // Baseline profile
     baselineProfile(project(":benchmark"))
