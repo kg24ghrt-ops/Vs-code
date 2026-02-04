@@ -9,6 +9,10 @@
     ".yml": {
       "enabled": true,
       "run": "yaml-language-server --stdio"
+    },
+    ".kts": {
+      "enabled": true,
+      "run": "kotlin-language-server"
     }
   }
 }
