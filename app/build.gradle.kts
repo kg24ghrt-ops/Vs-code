@@ -74,6 +74,8 @@ secrets {
 }
 
 dependencies {
+    implementation("androidx.compose.material:material-icons-core:1.6.0")
+    implementation("androidx.compose.material:material-icons-extended:1.6.0")
     // core modules
     implementation(project(":core-designsystem"))
     implementation(project(":core-navigation"))
