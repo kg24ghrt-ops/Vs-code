@@ -8,11 +8,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.PlayArrow
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow // Fixed Import
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,7 +36,7 @@ fun SpecialTestScreen(
         var mode by remember { mutableStateOf("Interpret") }
         val modes = listOf("Interpret", "Validate", "Batch")
         var result by remember { mutableStateOf<String?>(null) }
-        var history by remember { mutableStateOf(listOf<Pair<String, String>>()) } // Input to Result pair
+        var history by remember { mutableStateOf(listOf<Pair<String, String>>()) }
         var showRaw by remember { mutableStateOf(false) }
 
         Scaffold(
@@ -61,7 +61,6 @@ fun SpecialTestScreen(
                     .padding(innerPadding)
                     .padding(horizontal = 16.dp)
             ) {
-                // Input Section
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it },
@@ -80,7 +79,6 @@ fun SpecialTestScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Mode Selection
                 Text("Select Mode", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -97,7 +95,6 @@ fun SpecialTestScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Action Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -114,7 +111,7 @@ fun SpecialTestScreen(
                         contentPadding = PaddingValues(12.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.PlayArrow, contentDescription = null)
+                        Icon(Icons.Default.PlayArrow, contentDescription = null) // Fixed Icon
                         Spacer(Modifier.width(8.dp))
                         Text("Run Process")
                     }
@@ -129,7 +126,6 @@ fun SpecialTestScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Result Area
                 AnimatedVisibility(visible = result != null, enter = fadeIn(), exit = fadeOut()) {
                     ElevatedCard(
                         colors = CardDefaults.elevatedCardColors(
@@ -143,7 +139,12 @@ fun SpecialTestScreen(
                                 Spacer(Modifier.width(8.dp))
                                 Text("Latest Result", style = MaterialTheme.typography.titleSmall)
                             }
-                            Divider(Modifier.padding(vertical = 8.dp), alpha = 0.2f)
+                            // Fixed: Removed 'alpha' parameter which was causing FAILED compile
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                thickness = 1.dp,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.2f)
+                            )
                             Text(
                                 text = result ?: "",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -153,7 +154,6 @@ fun SpecialTestScreen(
                     }
                 }
 
-                // History Section
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.outline)
                     Spacer(Modifier.width(8.dp))
@@ -177,7 +177,6 @@ fun SpecialTestScreen(
                     }
                 }
 
-                // Footer Definitions
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
