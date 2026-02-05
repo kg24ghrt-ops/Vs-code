@@ -77,6 +77,7 @@ dependencies {
     implementation("androidx.startup:startup-runtime:1.1.1")
     implementation("androidx.compose.material:material-icons-core:1.6.0")
     implementation("androidx.compose.material:material-icons-extended:1.6.0")
+    
     // core modules
     implementation(project(":core-designsystem"))
     implementation(project(":core-navigation"))
@@ -87,14 +88,14 @@ dependencies {
     implementation(project(":feature-login"))
 
     // AndroidX & Jetpack
-    implementation("androidx.appcompat:appcompat:1.7.0") // latest stable
-    implementation("androidx.activity:activity-compose:1.9.0") // activity-compose
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2") // lifecycle runtime compose
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2") // viewmodel compose
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
 
     // Compose Material 3
-    implementation("androidx.compose.material3:material3:1.2.0") // Material 3
-    implementation("androidx.compose.material3:material3-window-size-class:1.2.0") // optional
+    implementation("androidx.compose.material3:material3:1.2.0")
+    implementation("androidx.compose.material3:material3-window-size-class:1.2.0")
 
     // Compose tooling
     implementation("androidx.compose.ui:ui-tooling:1.6.0")
@@ -125,7 +126,8 @@ dependencies {
     baselineProfile(project(":benchmark"))
 }
 
+// Fixed conditional: Removed the trailing period and ensured it's a standalone statement
 if (file("google-services.json").exists()) {
     apply(plugin = libs.plugins.gms.googleServices.get().pluginId)
     apply(plugin = libs.plugins.firebase.crashlytics.get().pluginId)
-}.
+}
