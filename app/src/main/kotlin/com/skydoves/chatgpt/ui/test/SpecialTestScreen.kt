@@ -8,9 +8,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.material3.icons.Icons
-import androidx.compose.material3.icons.filled.PlayArrow
-import androidx.compose.material3.icons.filled.Save
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -98,7 +98,8 @@ fun SpecialTestScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-              Button(
+              // use renamed helper (IconButtonWithText) instead of shadowing Button
+              IconButtonWithText(
                 onClick = {
                   // run
                   scope.launch {
@@ -108,7 +109,7 @@ fun SpecialTestScreen(
                   }
                 },
                 modifier = Modifier.padding(end = 8.dp),
-                icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) }
+                icon = { Icon(Icons.Filled.PlayArrow, contentDescription = null) }
               ) { Text("Run") }
 
               FilledTonalButton(onClick = {
@@ -122,7 +123,7 @@ fun SpecialTestScreen(
               Spacer(modifier = Modifier.width(8.dp))
 
               IconButton(onClick = { /* save stub - disabled until you confirm DB hookup */ }) {
-                Icon(Icons.Default.Save, contentDescription = "Save (disabled)")
+                Icon(Icons.Filled.Save, contentDescription = "Save (disabled)")
               }
             }
           }
@@ -200,7 +201,8 @@ private fun FlowRowDemo() {
   }
 }
 
-private fun Button(
+@Composable
+private fun IconButtonWithText(
   onClick: () -> Unit,
   modifier: Modifier = Modifier,
   icon: @Composable (() -> Unit)? = null,
