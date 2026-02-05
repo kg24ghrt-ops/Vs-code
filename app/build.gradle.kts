@@ -26,6 +26,11 @@ android {
     namespace = "com.skydoves.chatgpt"
     compileSdk = Configurations.compileSdk
 
+    // Added to fix "Unresolved reference: BuildConfig"
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.skydoves.chatgpt"
         minSdk = Configurations.minSdk
@@ -126,7 +131,6 @@ dependencies {
     baselineProfile(project(":benchmark"))
 }
 
-// Fixed conditional: Removed the trailing period and ensured it's a standalone statement
 if (file("google-services.json").exists()) {
     apply(plugin = libs.plugins.gms.googleServices.get().pluginId)
     apply(plugin = libs.plugins.firebase.crashlytics.get().pluginId)
