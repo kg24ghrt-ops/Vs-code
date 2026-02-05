@@ -1,4 +1,3 @@
-// package: use your app package, e.g. com.skydoves.chatgpt.ui.test
 package com.skydoves.chatgpt.ui.test
 
 import androidx.compose.foundation.background
@@ -24,7 +23,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun SpecialTestScreen(
   modifier: Modifier = Modifier,
-  onRun: (String, String) -> String = { input, mode -> com.skydoves.chatgpt.ui.test.SpecialCalculator.calculate(input, mode) }
+  onRun: (String, String) -> String = { input, mode ->
+      com.skydoves.chatgpt.ui.test.SpecialCalculator.calculate(input, mode)
+  }
 ) {
   ChatGPTComposeTheme {
     Surface(modifier = modifier.fillMaxSize()) {
@@ -72,7 +73,6 @@ fun SpecialTestScreen(
               horizontalArrangement = Arrangement.SpaceBetween,
               modifier = Modifier.fillMaxWidth()
             ) {
-              // mode chips
               Row {
                 modes.forEach { m ->
                   val selected = m == mode
@@ -98,10 +98,8 @@ fun SpecialTestScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-              // use renamed helper (IconButtonWithText) instead of shadowing Button
               IconButtonWithText(
                 onClick = {
-                  // run
                   scope.launch {
                     val out = onRun(input.trim(), mode)
                     result = out
@@ -113,16 +111,12 @@ fun SpecialTestScreen(
               ) { Text("Run") }
 
               FilledTonalButton(onClick = {
-                // quick sample inputs
-                input = when (input) {
-                  "" -> "12,d,a"
-                  else -> ""
-                }
+                input = if (input.isEmpty()) "12,d,a" else ""
               }) { Text("Preset") }
 
               Spacer(modifier = Modifier.width(8.dp))
 
-              IconButton(onClick = { /* save stub - disabled until you confirm DB hookup */ }) {
+              IconButton(onClick = { /* save stub */ }) {
                 Icon(Icons.Filled.Save, contentDescription = "Save (disabled)")
               }
             }
@@ -131,7 +125,6 @@ fun SpecialTestScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // result card
         result?.let { res ->
           Card(
             modifier = Modifier
@@ -143,12 +136,14 @@ fun SpecialTestScreen(
             Column(modifier = Modifier.padding(12.dp)) {
               Text("Result", style = MaterialTheme.typography.titleMedium)
               Spacer(modifier = Modifier.height(8.dp))
-              Text(if (showRaw) res else res.split("\n").joinToString("\n") { it }, style = MaterialTheme.typography.bodyMedium)
+              Text(
+                text = if (showRaw) res else res.split("\n").joinToString("\n") { it },
+                style = MaterialTheme.typography.bodyMedium
+              )
             }
           }
         }
 
-        // history + quick help
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
           Text("History", style = MaterialTheme.typography.titleMedium)
           Text("Tip: use comma to separate values", style = MaterialTheme.typography.bodySmall)
@@ -158,9 +153,10 @@ fun SpecialTestScreen(
 
         LazyColumn(modifier = Modifier.weight(1f)) {
           items(history) { item ->
-            Card(modifier = Modifier
-              .fillMaxWidth()
-              .padding(vertical = 4.dp),
+            Card(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
               shape = RoundedCornerShape(8.dp)
             ) {
               Text(item, modifier = Modifier.padding(10.dp))
@@ -170,7 +166,6 @@ fun SpecialTestScreen(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // footer quick-reference for definitions
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
           Column(modifier = Modifier.padding(10.dp)) {
             Text("Quick definitions (sample):", style = MaterialTheme.typography.titleSmall)
