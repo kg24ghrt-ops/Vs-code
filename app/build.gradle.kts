@@ -74,6 +74,7 @@ secrets {
 }
 
 dependencies {
+    implementation("androidx.startup:startup-runtime:1.1.1")
     implementation("androidx.compose.material:material-icons-core:1.6.0")
     implementation("androidx.compose.material:material-icons-extended:1.6.0")
     // core modules
