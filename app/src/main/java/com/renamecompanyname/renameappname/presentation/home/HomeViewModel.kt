@@ -1,72 +1,57 @@
 package com.renamecompanyname.renameappname.presentation.home
 
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.renamecompanyname.renameappname.presentation.BaseViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class HomeViewModel @Inject constructor(
-    // Later we will inject a ProjectGenerator service
-) : BaseViewModel<HomeViewModel.UiState, HomeViewModel.UiEvent>() {
+class HomeViewModel @Inject constructor() : ViewModel() {
 
-    override fun initialState(): UiState = UiState(
-        projectName = "",
-        packageName = "com.example.myapp",
-        isGenerating = false,
-        error = null
-    )
+    private val _uiState = MutableStateFlow(UiState())
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    override fun onEvent(event: UiEvent) {
+    fun onEvent(event: UiEvent) {
         when (event) {
-            is UiEvent.UpdateProjectName -> updateState { copy(projectName = event.value) }
-            is UiEvent.UpdatePackageName -> updateState { copy(packageName = event.value) }
+            is UiEvent.UpdateProjectName -> _uiState.update { it.copy(projectName = event.value) }
+            is UiEvent.UpdatePackageName -> _uiState.update { it.copy(packageName = event.value) }
             is UiEvent.GenerateProject -> generateProject()
         }
     }
 
     private fun generateProject() {
-        val currentState = uiState.value
-        if (currentState.projectName.isBlank() || currentState.packageName.isBlank()) {
-            updateState { copy(error = "Project name and package name cannot be empty") }
+        val current = _uiState.value
+        if (current.projectName.isBlank() || current.packageName.isBlank()) {
+            _uiState.update { it.copy(error = "Project name and package name cannot be empty") }
             return
         }
-        // Clear previous error and set loading
-        updateState { copy(isGenerating = true, error = null) }
+        _uiState.update { it.copy(isGenerating = true, error = null) }
 
         viewModelScope.launch {
             try {
-                // TODO: Call generator service
-                // val outputPath = ProjectGenerator.generate(
-                //     projectName = currentState.projectName,
-                //     packageName = currentState.packageName
-                // )
-                // Simulate success after delay
+                // Simulate generation delay – replace with actual generation logic
                 kotlinx.coroutines.delay(1500)
-                updateState { copy(isGenerating = false) }
-                // Optionally emit an event to show success message or navigate
-                // sendEvent(UiEvent.ProjectGenerated(outputPath))
+                _uiState.update { it.copy(isGenerating = false) }
+                // Optionally, you could emit a success event or navigate to a result screen
             } catch (e: Exception) {
-                updateState { copy(isGenerating = false, error = e.message ?: "Generation failed") }
+                _uiState.update { it.copy(isGenerating = false, error = e.message ?: "Generation failed") }
             }
         }
     }
 
-    // Helper to update UI state safely
-    private fun updateState(update: UiState.() -> UiState) {
-        _uiState.update { update(it) }
-    }
-
     data class UiState(
-        val projectName: String,
-        val packageName: String,
-        val isGenerating: Boolean,
-        val error: String?
-    ) : BaseUiState
+        val projectName: String = "",
+        val packageName: String = "com.example.myapp",
+        val isGenerating: Boolean = false,
+        val error: String? = null
+    )
 
-    sealed class UiEvent : BaseUiEvent {
+    sealed class UiEvent {
         data class UpdateProjectName(val value: String) : UiEvent()
         data class UpdatePackageName(val value: String) : UiEvent()
         object GenerateProject : UiEvent()
