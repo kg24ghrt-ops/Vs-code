@@ -1,0 +1,30 @@
+{
+  "plugin": "org.smartide.plugin.editor",
+  "run": "echo 'Error in .si.json file\n/data/user/0/org.smartide.code/files/home/projects/Project generator app/.si.json: open failed: ENOENT (No such file or directory)'",
+  "intelligence": {
+    ".kts": {
+      "enabled": true,
+      "run": "kotlin-language-server"
+    },
+    ".md": {
+      "enabled": true,
+      "run": "marksman server"
+    },
+    ".properties": {
+      "enabled": true,
+      "run": "lemminx"
+    },
+    ".kt": {
+      "enabled": true,
+      "run": "kotlin-language-server"
+    },
+    ".xml": {
+      "enabled": true,
+      "run": "lemminx"
+    },
+    ".yml": {
+      "enabled": true,
+      "run": "yaml-language-server --stdio"
+    }
+  }
+}
