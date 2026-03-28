@@ -45,6 +45,7 @@ fun HomeScreen(
         )
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Show error if any
         if (uiState.error != null) {
             Text(
                 text = uiState.error,
@@ -53,6 +54,18 @@ fun HomeScreen(
             )
         }
 
+        // Show download progress if >0 and <100
+        if (uiState.downloadProgress > 0 && uiState.downloadProgress < 100) {
+            LinearProgressIndicator(
+                progress = uiState.downloadProgress / 100f,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Downloading: ${uiState.downloadProgress}%")
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Generate button
         Button(
             onClick = { onEvent(HomeViewModel.UiEvent.GenerateProject) },
             enabled = !uiState.isGenerating,
@@ -67,6 +80,17 @@ fun HomeScreen(
                 Text("Generating...")
             } else {
                 Text("Generate Project")
+            }
+        }
+
+        // Share button after generation
+        uiState.generatedProjectPath?.let { path ->
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { onEvent(HomeViewModel.UiEvent.ShareGenerated(path)) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Share Generated Project")
             }
         }
     }
