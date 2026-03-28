@@ -19,21 +19,16 @@ class ProjectGenerator(private val context: Context) {
         outputDir: File
     ): File? = withContext(Dispatchers.IO) {
         try {
-            // 1. Create temp directory for extraction
             val tempDir = File(context.cacheDir, "template_extract_${System.currentTimeMillis()}")
             if (!tempDir.mkdirs()) return@withContext null
 
-            // 2. Extract ZIP from URI
             extractZip(zipUri, tempDir)
 
-            // 3. Replace placeholders
             replacePlaceholders(tempDir, projectName, packageName)
 
-            // 4. Copy to output directory
             outputDir.mkdirs()
             tempDir.copyRecursively(outputDir, overwrite = true)
 
-            // 5. Clean up
             tempDir.deleteRecursively()
 
             outputDir
@@ -84,19 +79,21 @@ class ProjectGenerator(private val context: Context) {
     }
 
     private fun replacePlaceholders(dir: File, projectName: String, packageName: String) {
-        // Walk all files and replace text
+        val originalPackage = detectOriginalPackageName(dir)
+        val originalAppName = detectOriginalAppName(dir)
+
+        // Replace text in files
         dir.walkTopDown().forEach { file ->
-            if (file.isFile && file.extension in listOf("kt", "java", "xml", "gradle", "properties", "pro")) {
+            if (file.isFile && file.extension in listOf("kt", "java", "xml", "gradle", "properties", "pro", "kts")) {
                 var content = file.readText()
-                content = content.replace("{{PACKAGE_NAME}}", packageName)
-                content = content.replace("{{APP_NAME}}", projectName)
-                content = content.replace("{{PROJECT_NAME_LOWERCASE}}", projectName.lowercase())
+                content = content.replace(originalPackage, packageName)
+                content = content.replace(originalAppName, projectName)
                 file.writeText(content)
             }
         }
 
-        // Rename directories that contain package placeholder
-        renamePlaceholderPaths(dir, "{{PACKAGE_NAME}}", packageName.replace('.', '/'))
+        // Rename directories that contain the original package name
+        renamePlaceholderPaths(dir, originalPackage.replace('.', '/'), packageName.replace('.', '/'))
     }
 
     private fun renamePlaceholderPaths(dir: File, placeholder: String, replacement: String) {
@@ -108,5 +105,46 @@ class ProjectGenerator(private val context: Context) {
                 file.renameTo(newFile)
             }
         }
+    }
+
+    private fun detectOriginalPackageName(projectDir: File): String {
+        // Try AndroidManifest.xml first
+        val manifestFile = File(projectDir, "app/src/main/AndroidManifest.xml")
+        if (manifestFile.exists()) {
+            val content = manifestFile.readText()
+            val packageRegex = Regex("package=\"([a-zA-Z][a-zA-Z0-9_]*\\.[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)*)\"")
+            val match = packageRegex.find(content)
+            if (match != null) {
+                return match.groupValues[1]
+            }
+        }
+
+        // Fallback: search for a common package pattern in Kotlin files
+        val kotlinFiles = projectDir.walkTopDown().filter { it.extension == "kt" }.take(5).toList()
+        for (file in kotlinFiles) {
+            val content = file.readText()
+            val packageRegex = Regex("package ([a-zA-Z][a-zA-Z0-9_]*\\.[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)*)")
+            val match = packageRegex.find(content)
+            if (match != null) {
+                return match.groupValues[1]
+            }
+        }
+
+        // Hardcoded fallback for the original template
+        return "com.renamecompanyname.renameappname"
+    }
+
+    private fun detectOriginalAppName(projectDir: File): String {
+        val stringsFile = File(projectDir, "app/src/main/res/values/strings.xml")
+        if (stringsFile.exists()) {
+            val content = stringsFile.readText()
+            val nameRegex = Regex("<string name=\"app_name\">(.*?)</string>")
+            val match = nameRegex.find(content)
+            if (match != null) {
+                return match.groupValues[1]
+            }
+        }
+        // Fallback
+        return "RenameAppName"
     }
 }

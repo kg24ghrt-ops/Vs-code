@@ -1,7 +1,9 @@
 package com.renamecompanyname.renameappname.presentation.home
 
 import android.app.Application
+import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,7 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.update  // <-- ADD THIS LINE
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
@@ -22,17 +24,27 @@ class HomeViewModel @Inject constructor(
     private val application: Application
 ) : ViewModel() {
 
-    private val templateUrl = "https://github.com/PimDhaen/modern-android-template-quick-start/archive/refs/heads/main.zip"
+    private val prefs: SharedPreferences = application.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+    private val defaultTemplateUrl = "https://github.com/PimDhaen/modern-android-template-quick-start/archive/refs/heads/main.zip"
+
     private val downloader = TemplateDownloader(application)
     private val generator = ProjectGenerator(application)
 
-    private val _uiState = MutableStateFlow(UiState())
+    private val _uiState = MutableStateFlow(
+        UiState(
+            templateUrl = prefs.getString("template_url", defaultTemplateUrl) ?: defaultTemplateUrl
+        )
+    )
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     fun onEvent(event: UiEvent) {
         when (event) {
             is UiEvent.UpdateProjectName -> _uiState.update { it.copy(projectName = event.value) }
             is UiEvent.UpdatePackageName -> _uiState.update { it.copy(packageName = event.value) }
+            is UiEvent.UpdateTemplateUrl -> {
+                _uiState.update { it.copy(templateUrl = event.value) }
+                prefs.edit().putString("template_url", event.value).apply()
+            }
             is UiEvent.GenerateProject -> generateProject()
             is UiEvent.ShareGenerated -> shareGeneratedProject(event.filePath)
             is UiEvent.ClearShareIntent -> _uiState.update { it.copy(shareIntent = null) }
@@ -48,7 +60,7 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(isGenerating = true, error = null, downloadProgress = 0) }
 
         viewModelScope.launch {
-            downloader.downloadTemplate(templateUrl)
+            downloader.downloadTemplate(current.templateUrl)
                 .catch { error ->
                     _uiState.update {
                         it.copy(
@@ -130,6 +142,7 @@ class HomeViewModel @Inject constructor(
     data class UiState(
         val projectName: String = "",
         val packageName: String = "com.example.myapp",
+        val templateUrl: String = "",
         val isGenerating: Boolean = false,
         val downloadProgress: Int = 0,
         val error: String? = null,
@@ -140,6 +153,7 @@ class HomeViewModel @Inject constructor(
     sealed class UiEvent {
         data class UpdateProjectName(val value: String) : UiEvent()
         data class UpdatePackageName(val value: String) : UiEvent()
+        data class UpdateTemplateUrl(val value: String) : UiEvent()
         object GenerateProject : UiEvent()
         data class ShareGenerated(val filePath: String) : UiEvent()
         object ClearShareIntent : UiEvent()

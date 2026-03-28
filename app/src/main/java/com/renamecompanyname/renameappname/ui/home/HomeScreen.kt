@@ -43,9 +43,16 @@ fun HomeScreen(
             isError = uiState.error != null && uiState.packageName.isBlank(),
             modifier = Modifier.fillMaxWidth()
         )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = uiState.templateUrl,
+            onValueChange = { onEvent(HomeViewModel.UiEvent.UpdateTemplateUrl(it)) },
+            label = { Text("Template URL (GitHub ZIP)") },
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Show error if any
         if (uiState.error != null) {
             Text(
                 text = uiState.error,
@@ -54,7 +61,6 @@ fun HomeScreen(
             )
         }
 
-        // Show download progress if >0 and <100
         if (uiState.downloadProgress > 0 && uiState.downloadProgress < 100) {
             LinearProgressIndicator(
                 progress = uiState.downloadProgress / 100f,
@@ -65,7 +71,6 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // Generate button
         Button(
             onClick = { onEvent(HomeViewModel.UiEvent.GenerateProject) },
             enabled = !uiState.isGenerating,
@@ -83,7 +88,6 @@ fun HomeScreen(
             }
         }
 
-        // Share button after generation
         uiState.generatedProjectPath?.let { path ->
             Spacer(modifier = Modifier.height(16.dp))
             Button(
