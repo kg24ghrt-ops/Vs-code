@@ -97,6 +97,11 @@ dependencies {
     // ==================== Database ====================
     // REMOVED: implementation(libs.mongodb.realm.kotlin.library.base)   // MongoDB local-only SDK
 
+    // ==================== Room (template caching) ====================
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
+
     // ==================== CoRoutines ====================
     implementation(libs.kotlinx.coroutines)
 
@@ -117,11 +122,8 @@ dependencies {
     // ==================== Image Loading ====================
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
-    
-    // Timber for logging
+
+    // ==================== Logging ====================
     implementation("com.jakewharton.timber:timber:5.0.1")
 }
 

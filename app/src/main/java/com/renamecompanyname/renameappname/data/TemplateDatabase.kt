@@ -5,7 +5,6 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import java.util.Date
 
 @Database(
     entities = [CachedTemplate::class],
@@ -32,12 +31,4 @@ abstract class TemplateDatabase : RoomDatabase() {
             }
         }
     }
-}
-
-class DateConverters {
-    @androidx.room.TypeConverter
-    fun fromTimestamp(value: Long?): Date? = value?.let { Date(it) }
-
-    @androidx.room.TypeConverter
-    fun dateToTimestamp(date: Date?): Long? = date?.time
 }
