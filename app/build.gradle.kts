@@ -123,7 +123,11 @@ dependencies {
 // KAPT configuration to prevent duplicate stubs and enable K2 backend
 kapt {
     correctErrorTypes = true
-    useBuildCache = false  // disable incremental cache to avoid stale stubs
+    useBuildCache = false
+
+    // 🔥 ADD THESE
+    includeCompileClasspath = false
+    incremental = false
 }
 
 ktlint {

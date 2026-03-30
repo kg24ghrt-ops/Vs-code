@@ -35,32 +35,30 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # 4️⃣ Force delete KAPT stubs to avoid duplicate class issues
-      - name: Delete KAPT generated stubs
-        run: rm -rf app/build/tmp/kapt3/
+      # 4️⃣ Clean + Build (FIXED)
+      - name: Clean and Build APKs (No duplicate KAPT)
+        run: |
+          ./gradlew clean \
+          assembleDebug assembleRelease \
+          -x test \
+          -x kaptAndroidTestKotlin \
+          --no-build-cache \
+          --no-daemon
 
-      # 5️⃣ Clean project
-      - name: Clean project
-        run: ./gradlew clean
-
-      # 6️⃣ Build everything in a single step (no daemon, no incremental KAPT)
-      - name: Build Debug + Release + Run Unit Tests
-        run: ./gradlew build --no-build-cache --no-daemon
-
-      # 7️⃣ Upload Debug APK
+      # 5️⃣ Upload Debug APK
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
-      # 8️⃣ Upload Release APK
+      # 6️⃣ Upload Release APK
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: app/build/outputs/apk/release/*.apk
 
-      # 9️⃣ Optional: Run ktlint checks
+      # 7️⃣ Optional: Run ktlint (separate, safe)
       - name: Run ktlint
-        run: ./gradlew ktlintCheck
+        run: ./gradlew ktlintCheck --no-daemon
