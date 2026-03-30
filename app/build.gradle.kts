@@ -127,7 +127,7 @@ kapt {
 
     // 🔥 ADD THESE
     includeCompileClasspath = false
-    incremental = false
+   // incremental = false
 }
 
 ktlint {
