@@ -41,7 +41,8 @@ jobs:
           ./gradlew clean \
           assembleDebug assembleRelease \
           -x test \
-          -x kaptAndroidTestKotlin \
+          -x kaptDebugAndroidTestKotlin \
+          -x kaptGenerateStubsDebugAndroidTestKotlin \
           --no-build-cache \
           --no-daemon
 
@@ -59,6 +60,6 @@ jobs:
           name: release-apk
           path: app/build/outputs/apk/release/*.apk
 
-      # 7️⃣ Optional: Run ktlint (separate, safe)
+      # 7️⃣ Optional: Run ktlint (safe)
       - name: Run ktlint
         run: ./gradlew ktlintCheck --no-daemon
