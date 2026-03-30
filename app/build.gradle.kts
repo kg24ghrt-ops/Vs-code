@@ -92,10 +92,10 @@ dependencies {
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.ktor.client.android)
 
-    // Room
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
+    // Room (upgraded to 2.7.0-alpha10 for Kotlin 2.0+ support)
+    implementation("androidx.room:room-runtime:2.7.0-alpha10")
+    implementation("androidx.room:room-ktx:2.7.0-alpha10")
+    kapt("androidx.room:room-compiler:2.7.0-alpha10")
 
     // Coroutines
     implementation(libs.kotlinx.coroutines)
@@ -120,10 +120,10 @@ dependencies {
     implementation("com.jakewharton.timber:timber:5.0.1")
 }
 
-// KAPT configuration to prevent duplicate stubs in CI/CD
+// KAPT configuration to prevent duplicate stubs and enable K2 backend
 kapt {
     correctErrorTypes = true
-    useBuildCache = false  // <-- disables incremental KAPT caching
+    useBuildCache = false  // disable incremental cache to avoid stale stubs
 }
 
 ktlint {
