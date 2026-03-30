@@ -1,9 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
-    id("kotlin-kapt") // needed for hilt, TODO: migrate to catalog file for type safety
+    id("kotlin-kapt") // needed for Hilt
     alias(libs.plugins.hilt.android)
-    // REMOVED: alias(libs.plugins.mongodb.realm.kotlin)   // MongoDB cloud dependency
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ktlint)
@@ -31,19 +30,18 @@ android {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
+                "proguard-rules.pro"
             )
         }
     }
 
-    // Modern Java version: Use Java 17
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = "17"  // Must match compileOptions
+        jvmTarget = "17"
     }
 
     buildFeatures {
@@ -58,23 +56,23 @@ android {
 }
 
 dependencies {
-    // ==================== Core ====================
+    // Core
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
-    // ==================== Dependency Injection ====================
+    // Dependency Injection
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation.compose)
     kapt(libs.hilt.android.compiler)
 
-    // ==================== Testing ====================
+    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.ui.test.junit4)
 
-    // ==================== Compose & UI ====================
+    // Compose & UI
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.ui)
@@ -85,7 +83,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation(libs.compose.shimmer)
 
-    // ==================== Networking ====================
+    // Networking
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.client.auth)
@@ -94,41 +92,38 @@ dependencies {
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.ktor.client.android)
 
-    // ==================== Database ====================
-    // REMOVED: implementation(libs.mongodb.realm.kotlin.library.base)   // MongoDB local-only SDK
-
-    // ==================== Room (template caching) ====================
+    // Room
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
 
-    // ==================== CoRoutines ====================
+    // Coroutines
     implementation(libs.kotlinx.coroutines)
 
-    // ==================== Navigation (Compose) ====================
+    // Navigation
     implementation(libs.androidx.navigation.compose)
 
-    // ==================== Serialization ====================
+    // Serialization
     implementation(libs.kotlinx.serialization.json)
 
-    // ==================== In-App Updates ====================
+    // In-App Updates & Reviews
     implementation(libs.app.update)
     implementation(libs.app.update.ktx)
-
-    // ==================== In-App Reviews ====================
     implementation(libs.review)
     implementation(libs.review.ktx)
 
-    // ==================== Image Loading ====================
+    // Image Loading
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
 
-    // ==================== Logging ====================
+    // Logging
     implementation("com.jakewharton.timber:timber:5.0.1")
 }
 
+// KAPT configuration to prevent duplicate stubs in CI/CD
 kapt {
     correctErrorTypes = true
+    useBuildCache = false  // <-- disables incremental KAPT caching
 }
 
 ktlint {
