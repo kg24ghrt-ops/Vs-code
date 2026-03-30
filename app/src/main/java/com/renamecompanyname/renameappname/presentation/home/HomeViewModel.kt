@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.renamecompanyname.renameappname.data.TemplateDatabase
 import com.renamecompanyname.renameappname.generator.ProjectGenerator
 import com.renamecompanyname.renameappname.generator.TemplateDownloader
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.Date
 import javax.inject.Inject
 
 @HiltViewModel
@@ -29,6 +31,7 @@ class HomeViewModel @Inject constructor(
 
     private val downloader = TemplateDownloader(application)
     private val generator = ProjectGenerator(application)
+    private val database = TemplateDatabase.getInstance(application)
 
     private val _uiState = MutableStateFlow(
         UiState(
@@ -48,6 +51,9 @@ class HomeViewModel @Inject constructor(
             is UiEvent.GenerateProject -> generateProject()
             is UiEvent.ShareGenerated -> shareGeneratedProject(event.filePath)
             is UiEvent.ClearShareIntent -> _uiState.update { it.copy(shareIntent = null) }
+            is UiEvent.GetCacheStats -> getCacheStats()
+            is UiEvent.ClearCache -> clearCache()
+            is UiEvent.ClearCacheFlag -> _uiState.update { it.copy(cacheCleared = false) }
         }
     }
 
@@ -139,6 +145,21 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(shareIntent = shareIntent) }
     }
 
+    private fun getCacheStats() {
+        viewModelScope.launch {
+            val count = database.templateDao().getCount()
+            _uiState.update { it.copy(cacheCount = count) }
+        }
+    }
+
+    private fun clearCache() {
+        viewModelScope.launch {
+            // Delete all cached templates
+            database.templateDao().deleteAll()
+            _uiState.update { it.copy(cacheCount = 0, cacheCleared = true) }
+        }
+    }
+
     data class UiState(
         val projectName: String = "",
         val packageName: String = "com.example.myapp",
@@ -147,7 +168,9 @@ class HomeViewModel @Inject constructor(
         val downloadProgress: Int = 0,
         val error: String? = null,
         val generatedProjectPath: String? = null,
-        val shareIntent: Intent? = null
+        val shareIntent: Intent? = null,
+        val cacheCount: Int = 0,
+        val cacheCleared: Boolean = false
     )
 
     sealed class UiEvent {
@@ -157,5 +180,8 @@ class HomeViewModel @Inject constructor(
         object GenerateProject : UiEvent()
         data class ShareGenerated(val filePath: String) : UiEvent()
         object ClearShareIntent : UiEvent()
+        object GetCacheStats : UiEvent()
+        object ClearCache : UiEvent()
+        object ClearCacheFlag : UiEvent()
     }
 }

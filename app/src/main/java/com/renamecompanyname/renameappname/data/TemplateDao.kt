@@ -26,4 +26,7 @@ interface TemplateDao {
 
     @Query("SELECT COUNT(*) FROM cached_templates")
     suspend fun getCount(): Int
+
+    @Query("DELETE FROM cached_templates")
+    suspend fun deleteAll()
 }

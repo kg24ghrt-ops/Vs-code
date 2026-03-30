@@ -1,7 +1,6 @@
 package com.renamecompanyname.renameappname.generator
 
 import android.app.DownloadManager
-import android.content.ContentResolver
 import android.content.Context
 import android.database.ContentObserver
 import android.net.Uri
@@ -11,12 +10,13 @@ import android.os.Looper
 import androidx.core.net.toUri
 import com.renamecompanyname.renameappname.data.CachedTemplate
 import com.renamecompanyname.renameappname.data.TemplateDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
 import timber.log.Timber
 import java.io.File
 import java.net.HttpURLConnection
@@ -38,14 +38,14 @@ class TemplateDownloader(private val context: Context) {
             val cached = withContext(Dispatchers.IO) {
                 database.templateDao().getByUrl(url)
             }
-            
+
             // Step 2: Check if remote file has changed
             val remoteInfo = withContext(Dispatchers.IO) {
                 getRemoteFileInfo(url)
             }
-            
+
             Timber.d("Cached: ETag=${cached?.etag}, Remote: ETag=${remoteInfo?.etag}")
-            
+
             // Step 3: If cache exists and ETag matches, use cached version
             if (cached != null && cached.etag == remoteInfo?.etag) {
                 Timber.i("Using cached template from: ${cached.cachedFilePath}")
@@ -54,7 +54,7 @@ class TemplateDownloader(private val context: Context) {
                 close()
                 return@callbackFlow
             }
-            
+
             // Step 4: Otherwise download new version
             Timber.i("Downloading fresh template from: $url")
             val downloadId = enqueueDownload(url)
@@ -64,13 +64,13 @@ class TemplateDownloader(private val context: Context) {
                     close()
                 }
             }
-            
+
             context.contentResolver.registerContentObserver(
                 Uri.parse("content://downloads/my_downloads"),
                 true,
                 observer
             )
-            
+
             awaitClose {
                 context.contentResolver.unregisterContentObserver(observer)
             }
@@ -86,13 +86,13 @@ class TemplateDownloader(private val context: Context) {
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.requestMethod = "HEAD"
             connection.connect()
-            
+
             val etag = connection.getHeaderField("ETag")
             val lastModified = connection.getHeaderField("Last-Modified")
             val contentLength = connection.contentLengthLong
-            
+
             connection.disconnect()
-            
+
             RemoteFileInfo(etag, lastModified, contentLength)
         } catch (e: Exception) {
             Timber.w(e, "Failed to get remote file info")
@@ -103,7 +103,7 @@ class TemplateDownloader(private val context: Context) {
     private fun enqueueDownload(url: String): Long {
         val fileName = "template_${System.currentTimeMillis()}.zip"
         val destination = File(context.cacheDir, fileName).absolutePath
-        
+
         val request = DownloadManager.Request(url.toUri()).apply {
             setTitle("Project Template")
             setDescription("Downloading Android project template")
@@ -138,12 +138,14 @@ class TemplateDownloader(private val context: Context) {
                             uri?.let { uriString ->
                                 val fileUri = uriString.toUri()
                                 val filePath = getFilePathFromUri(fileUri)
-                                
-                                // Save to cache
+
+                                // Save to cache in a background coroutine
                                 if (filePath != null) {
-                                    saveToCache(templateUrl, filePath, remoteInfo)
+                                    CoroutineScope(Dispatchers.IO).launch {
+                                        saveToCache(templateUrl, filePath, remoteInfo)
+                                    }
                                 }
-                                
+
                                 Timber.i("Download completed: $filePath")
                                 onEvent(DownloadEvent.Success(fileUri))
                             } ?: onEvent(DownloadEvent.Failure("No URI for downloaded file"))
@@ -160,9 +162,10 @@ class TemplateDownloader(private val context: Context) {
                 }
             }
         }
-        
+
         private fun getFilePathFromUri(uri: Uri): String? {
             return try {
+                // Use content resolver to get the actual file path
                 context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                     val columnIndex = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_FILENAME)
                     if (cursor.moveToFirst() && columnIndex >= 0) {
@@ -176,7 +179,7 @@ class TemplateDownloader(private val context: Context) {
                 null
             }
         }
-        
+
         private suspend fun saveToCache(url: String, filePath: String, remoteInfo: RemoteFileInfo?) {
             withContext(Dispatchers.IO) {
                 val template = CachedTemplate(

@@ -1,175 +1,176 @@
-package com.renamecompanyname.renameappname.ui.home
+package com.renamecompanyname.renameappname.presentation.home
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import com.renamecompanyname.renameappname.presentation.home.HomeViewModel
+import android.app.Application
+import android.content.Intent
+import androidx.core.content.FileProvider
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.renamecompanyname.renameappname.generator.ProjectGenerator
+import com.renamecompanyname.renameappname.generator.TemplateDownloader
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.io.File
+import javax.inject.Inject
 
-@Composable
-fun HomeScreen(
-    uiState: HomeViewModel.UiState,
-    onEvent: (HomeViewModel.UiEvent) -> Unit,
-    onNavigateToLogs: () -> Unit
-) {
-    // Fetch cache stats when screen loads
-    LaunchedEffect(Unit) {
-        onEvent(HomeViewModel.UiEvent.GetCacheStats)
-    }
-    
-    // Clear any temporary cache-cleared flag after a short delay
-    LaunchedEffect(uiState.cacheCleared) {
-        if (uiState.cacheCleared) {
-            kotlinx.coroutines.delay(3000)
-            onEvent(HomeViewModel.UiEvent.ClearCacheFlag)
+@HiltViewModel
+class HomeViewModel @Inject constructor(
+    private val application: Application
+) : ViewModel() {
+
+    private val templateUrlPref = "https://github.com/PimDhaen/modern-android-template-quick-start/archive/refs/heads/main.zip"
+    private val downloader = TemplateDownloader(application)
+    private val generator = ProjectGenerator(application)
+
+    private val _uiState = MutableStateFlow(
+        UiState(
+            templateUrl = templateUrlPref
+        )
+    )
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    fun onEvent(event: UiEvent) {
+        when (event) {
+            is UiEvent.UpdateProjectName -> _uiState.update { it.copy(projectName = event.value) }
+            is UiEvent.UpdatePackageName -> _uiState.update { it.copy(packageName = event.value) }
+            is UiEvent.UpdateTemplateUrl -> _uiState.update { it.copy(templateUrl = event.value) }
+            is UiEvent.GenerateProject -> generateProject()
+            is UiEvent.ShareGenerated -> shareGeneratedProject(event.filePath)
+            is UiEvent.ClearShareIntent -> _uiState.update { it.copy(shareIntent = null) }
+            is UiEvent.GetCacheStats -> getCacheStats()
+            is UiEvent.ClearCache -> clearCache()
+            is UiEvent.ClearCacheFlag -> _uiState.update { it.copy(cacheCleared = false) }
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Top,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "Android Project Generator",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.height(32.dp))
+    private fun generateProject() {
+        val current = _uiState.value
+        if (current.projectName.isBlank() || current.packageName.isBlank()) {
+            _uiState.update { it.copy(error = "Project name and package name cannot be empty") }
+            return
+        }
+        _uiState.update { it.copy(isGenerating = true, error = null, downloadProgress = 0) }
 
-        OutlinedTextField(
-            value = uiState.projectName,
-            onValueChange = { onEvent(HomeViewModel.UiEvent.UpdateProjectName(it)) },
-            label = { Text("Project Name") },
-            isError = uiState.error != null && uiState.projectName.isBlank(),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = uiState.packageName,
-            onValueChange = { onEvent(HomeViewModel.UiEvent.UpdatePackageName(it)) },
-            label = { Text("Package Name (e.g., com.example.myapp)") },
-            isError = uiState.error != null && uiState.packageName.isBlank(),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = uiState.templateUrl,
-            onValueChange = { onEvent(HomeViewModel.UiEvent.UpdateTemplateUrl(it)) },
-            label = { Text("Template URL (GitHub ZIP)") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Cache stats card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "Template Cache",
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    Text(
-                        text = "${uiState.cacheCount} template(s) stored",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    if (uiState.cacheCleared) {
-                        Text(
-                            text = "Cache cleared!",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodySmall
+        viewModelScope.launch {
+            downloader.downloadTemplate(current.templateUrl)
+                .catch { error ->
+                    _uiState.update {
+                        it.copy(
+                            isGenerating = false,
+                            error = "Download failed: ${error.message}"
                         )
                     }
                 }
-                Button(
-                    onClick = { onEvent(HomeViewModel.UiEvent.ClearCache) },
-                    enabled = uiState.cacheCount > 0 && !uiState.isGenerating
-                ) {
-                    Text("Clear Cache")
+                .collect { event ->
+                    when (event) {
+                        is TemplateDownloader.DownloadEvent.Progress -> {
+                            _uiState.update { it.copy(downloadProgress = event.progress) }
+                        }
+                        is TemplateDownloader.DownloadEvent.Success -> {
+                            val outputDir = File(application.cacheDir, "generated_${System.currentTimeMillis()}")
+                            val generatedDir = generator.generateFromZip(
+                                zipUri = event.zipUri,
+                                projectName = current.projectName,
+                                packageName = current.packageName,
+                                outputDir = outputDir
+                            )
+                            if (generatedDir != null) {
+                                val zipFile = generator.zipDirectory(generatedDir)
+                                if (zipFile != null) {
+                                    _uiState.update {
+                                        it.copy(
+                                            isGenerating = false,
+                                            generatedProjectPath = zipFile.absolutePath,
+                                            error = null
+                                        )
+                                    }
+                                } else {
+                                    _uiState.update {
+                                        it.copy(
+                                            isGenerating = false,
+                                            error = "Failed to create output zip"
+                                        )
+                                    }
+                                }
+                            } else {
+                                _uiState.update {
+                                    it.copy(
+                                        isGenerating = false,
+                                        error = "Generation failed"
+                                    )
+                                }
+                            }
+                        }
+                        is TemplateDownloader.DownloadEvent.Failure -> {
+                            _uiState.update {
+                                it.copy(
+                                    isGenerating = false,
+                                    error = "Download failed: ${event.error}"
+                                )
+                            }
+                        }
+                    }
                 }
-            }
         }
-        Spacer(modifier = Modifier.height(16.dp))
+    }
 
-        // Error display
-        if (uiState.error != null) {
-            Text(
-                text = uiState.error,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-        }
+    private fun shareGeneratedProject(filePath: String) {
+        val file = File(filePath)
+        if (!file.exists()) return
 
-        // Download progress
-        if (uiState.downloadProgress > 0 && uiState.downloadProgress < 100) {
-            LinearProgressIndicator(
-                progress = uiState.downloadProgress / 100f,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Downloading: ${uiState.downloadProgress}%")
-            Spacer(modifier = Modifier.height(16.dp))
+        val uri = FileProvider.getUriForFile(
+            application,
+            "${application.packageName}.fileprovider",
+            file
+        )
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        _uiState.update { it.copy(shareIntent = shareIntent) }
+    }
 
-        // Generate button
-        Button(
-            onClick = { onEvent(HomeViewModel.UiEvent.GenerateProject) },
-            enabled = !uiState.isGenerating,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (uiState.isGenerating) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Generating...")
-            } else {
-                Text("Generate Project")
-            }
+    private fun getCacheStats() {
+        viewModelScope.launch {
+            val count = downloader.getCachedTemplateCount()
+            _uiState.update { it.copy(cacheCount = count) }
         }
+    }
 
-        // Share button after generation
-        uiState.generatedProjectPath?.let { path ->
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = { onEvent(HomeViewModel.UiEvent.ShareGenerated(path)) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Share Generated Project")
-            }
+    private fun clearCache() {
+        viewModelScope.launch {
+            downloader.clearCache()
+            _uiState.update { it.copy(cacheCount = 0, cacheCleared = true) }
         }
+    }
 
-        // Logs button
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = onNavigateToLogs,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.secondary
-            )
-        ) {
-            Text("View Developer Logs")
-        }
+    data class UiState(
+        val projectName: String = "",
+        val packageName: String = "com.example.myapp",
+        val templateUrl: String = "",
+        val isGenerating: Boolean = false,
+        val downloadProgress: Int = 0,
+        val error: String? = null,
+        val generatedProjectPath: String? = null,
+        val shareIntent: Intent? = null,
+        val cacheCount: Int = 0,
+        val cacheCleared: Boolean = false
+    )
+
+    sealed class UiEvent {
+        data class UpdateProjectName(val value: String) : UiEvent()
+        data class UpdatePackageName(val value: String) : UiEvent()
+        data class UpdateTemplateUrl(val value: String) : UiEvent()
+        object GenerateProject : UiEvent()
+        data class ShareGenerated(val filePath: String) : UiEvent()
+        object ClearShareIntent : UiEvent()
+        object GetCacheStats : UiEvent()
+        object ClearCache : UiEvent()
+        object ClearCacheFlag : UiEvent()
     }
 }
