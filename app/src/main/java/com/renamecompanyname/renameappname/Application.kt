@@ -1,17 +1,18 @@
 package com.renamecompanyname.renameappname
 
 import android.app.Application
+import com.renamecompanyname.renameappname.logging.InAppLoggingTree
 import dagger.hilt.android.HiltAndroidApp
+import timber.log.Timber
 
-// The Android Application class is the Application-wide entry point.
-//
-// - It will be created before the MainActivity.kt.
-// - The right place set up global state, initialize libraries with order priority
-//
-// Must be annotated with @HiltAndroidApp to work with Hilt Dependency Injection.
 @HiltAndroidApp
 class Application : Application() {
     override fun onCreate() {
         super.onCreate()
+        if (BuildConfig.DEBUG) {
+            Timber.plant(Timber.DebugTree())
+        }
+        // Always plant the in‑app logging tree
+        Timber.plant(InAppLoggingTree())
     }
 }

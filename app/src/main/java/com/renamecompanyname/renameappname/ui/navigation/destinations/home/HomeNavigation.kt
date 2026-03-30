@@ -17,13 +17,16 @@ fun NavController.navigateToHome() {
     navigate(route = Home)
 }
 
-fun NavGraphBuilder.homeDestination() {
+fun NavGraphBuilder.homeDestination(
+    onNavigateToLogs: () -> Unit
+) {
     composable<Home> {
         val viewModel: HomeViewModel = hiltViewModel()
         val uiState by viewModel.uiState.collectAsState()
         HomeScreen(
             uiState = uiState,
-            onEvent = viewModel::onEvent
+            onEvent = viewModel::onEvent,
+            onNavigateToLogs = onNavigateToLogs
         )
     }
 }

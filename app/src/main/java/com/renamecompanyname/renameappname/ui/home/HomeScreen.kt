@@ -1,6 +1,8 @@
 package com.renamecompanyname.renameappname.ui.home
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -11,13 +13,28 @@ import com.renamecompanyname.renameappname.presentation.home.HomeViewModel
 @Composable
 fun HomeScreen(
     uiState: HomeViewModel.UiState,
-    onEvent: (HomeViewModel.UiEvent) -> Unit
+    onEvent: (HomeViewModel.UiEvent) -> Unit,
+    onNavigateToLogs: () -> Unit
 ) {
+    // Fetch cache stats when screen loads
+    LaunchedEffect(Unit) {
+        onEvent(HomeViewModel.UiEvent.GetCacheStats)
+    }
+    
+    // Clear any temporary cache-cleared flag after a short delay
+    LaunchedEffect(uiState.cacheCleared) {
+        if (uiState.cacheCleared) {
+            kotlinx.coroutines.delay(3000)
+            onEvent(HomeViewModel.UiEvent.ClearCacheFlag)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -53,6 +70,48 @@ fun HomeScreen(
         )
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Cache stats card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Template Cache",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        text = "${uiState.cacheCount} template(s) stored",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (uiState.cacheCleared) {
+                        Text(
+                            text = "Cache cleared!",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                Button(
+                    onClick = { onEvent(HomeViewModel.UiEvent.ClearCache) },
+                    enabled = uiState.cacheCount > 0 && !uiState.isGenerating
+                ) {
+                    Text("Clear Cache")
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Error display
         if (uiState.error != null) {
             Text(
                 text = uiState.error,
@@ -61,6 +120,7 @@ fun HomeScreen(
             )
         }
 
+        // Download progress
         if (uiState.downloadProgress > 0 && uiState.downloadProgress < 100) {
             LinearProgressIndicator(
                 progress = uiState.downloadProgress / 100f,
@@ -71,6 +131,7 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
 
+        // Generate button
         Button(
             onClick = { onEvent(HomeViewModel.UiEvent.GenerateProject) },
             enabled = !uiState.isGenerating,
@@ -88,6 +149,7 @@ fun HomeScreen(
             }
         }
 
+        // Share button after generation
         uiState.generatedProjectPath?.let { path ->
             Spacer(modifier = Modifier.height(16.dp))
             Button(
@@ -96,6 +158,18 @@ fun HomeScreen(
             ) {
                 Text("Share Generated Project")
             }
+        }
+
+        // Logs button
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = onNavigateToLogs,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.secondary
+            )
+        ) {
+            Text("View Developer Logs")
         }
     }
 }
