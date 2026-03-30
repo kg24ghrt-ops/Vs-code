@@ -25,6 +25,10 @@
     ".yml": {
       "enabled": true,
       "run": "yaml-language-server --stdio"
+    },
+    ".toml": {
+      "enabled": false,
+      "run": "taplo lsp stdio"
     }
   }
 }
