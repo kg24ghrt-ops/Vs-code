@@ -93,9 +93,9 @@ dependencies {
     implementation(libs.ktor.ktor.client.android)
 
     // Room (upgraded to 2.7.0-alpha10 for Kotlin 2.0+ support)
-    implementation("androidx.room:room-runtime:2.7.0-alpha10")
-    implementation("androidx.room:room-ktx:2.7.0-alpha10")
-    kapt("androidx.room:room-compiler:2.7.0-alpha10")
+    implementation("androidx.room:room-runtime:2.7.0-alpha12")
+    implementation("androidx.room:room-ktx:2.7.0-alpha12")
+    kapt("androidx.room:room-compiler:2.7.0-alpha12")
 
     // Coroutines
     implementation(libs.kotlinx.coroutines)
