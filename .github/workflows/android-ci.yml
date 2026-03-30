@@ -59,4 +59,4 @@ jobs:
 
       # 8️⃣ Optional: Run ktlint checks
       - name: Run ktlint
-        run: ./gradlew ktlintCheck
+        run: ./gradlew ktlintCheck.
