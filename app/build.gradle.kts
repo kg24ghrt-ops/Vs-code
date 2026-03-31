@@ -1,12 +1,12 @@
 plugins {
-    id("com.android.application") version "8.5.2"
-    id("org.jetbrains.kotlin.android") version "2.0.20"
-    id("kotlin-kapt") // still needed for Hilt (but we'll use KSP, so this line could be removed; keep for now)
-    id("com.google.dagger.hilt.android") version "2.52"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.20"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.20"
-    id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
-    id("com.google.devtools.ksp") version "2.0.20-1.0.24"
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("com.google.dagger.hilt.android")        // version from root
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.20"  // still needs version
+    id("org.jetbrains.kotlin.plugin.compose")   // version from root
+    id("org.jlleitschuh.gradle.ktlint")         // version from root
+    id("com.google.devtools.ksp")               // version from root
+    // kotlin-kapt is removed – we use KSP for both Hilt and Room
 }
 
 android {
@@ -117,9 +117,6 @@ dependencies {
     // Timber
     implementation("com.jakewharton.timber:timber:5.0.1")
 }
-
-// KAPT is no longer used – remove the block if desired
-// kapt { ... }
 
 ktlint {
     android.set(true)
