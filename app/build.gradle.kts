@@ -1,11 +1,12 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.serialization")
-    id("org.jetbrains.kotlin.plugin.compose")
-    id("org.jlleitschuh.gradle.ktlint")
-    id("com.google.devtools.ksp") // KSP for both Room and Hilt
-    id("com.google.dagger.hilt.android") // Hilt plugin still needed
+    id("com.android.application") version "8.5.2"
+    id("org.jetbrains.kotlin.android") version "2.0.20"
+    id("kotlin-kapt") // still needed for Hilt (but we'll use KSP, so this line could be removed; keep for now)
+    id("com.google.dagger.hilt.android") version "2.52"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.20"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.0.20"
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
+    id("com.google.devtools.ksp") version "2.0.20-1.0.24"
 }
 
 android {
@@ -25,7 +26,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 
@@ -43,7 +47,9 @@ android {
     }
 
     packaging {
-        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
     }
 }
 
@@ -52,10 +58,10 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
 
-    // Hilt (with KSP)
+    // Hilt (KSP)
     implementation("com.google.dagger:hilt-android:2.52")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
-    ksp("com.google.dagger:hilt-android-compiler:2.52")   // 👈 KSP for Hilt
+    ksp("com.google.dagger:hilt-android-compiler:2.52")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
@@ -112,7 +118,7 @@ dependencies {
     implementation("com.jakewharton.timber:timber:5.0.1")
 }
 
-// Remove kapt block entirely (no longer needed)
+// KAPT is no longer used – remove the block if desired
 // kapt { ... }
 
 ktlint {
