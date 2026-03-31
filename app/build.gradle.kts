@@ -118,11 +118,7 @@ dependencies {
     implementation("com.jakewharton.timber:timber:5.0.1")
 }
 
-ksp {
-    correctErrorTypes = true
-    // Optional: disable incremental caching to avoid stale KSP files on CI
-    useBuildCache = false
-}
+
 
 ktlint {
     android.set(true)
