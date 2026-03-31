@@ -1,12 +1,11 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.google.dagger.hilt.android")        // version from root
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.20"  // still needs version
-    id("org.jetbrains.kotlin.plugin.compose")   // version from root
-    id("org.jlleitschuh.gradle.ktlint")         // version from root
-    id("com.google.devtools.ksp")               // version from root
-    // kotlin-kapt is removed – we use KSP for both Hilt and Room
+    id("kotlin-kapt")
+    id("com.google.dagger.hilt.android")
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.24"
+    id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jlleitschuh.gradle.ktlint")
 }
 
 android {
@@ -58,10 +57,10 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
 
-    // Hilt (KSP)
+    // Hilt
     implementation("com.google.dagger:hilt-android:2.52")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
-    ksp("com.google.dagger:hilt-android-compiler:2.52")
+    kapt("com.google.dagger:hilt-android-compiler:2.52")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
@@ -90,10 +89,10 @@ dependencies {
     implementation("io.ktor:ktor-client-okhttp:2.3.12")
     implementation("io.ktor:ktor-client-android:2.3.12")
 
-    // Room (KSP)
-    implementation("androidx.room:room-runtime:2.7.0-alpha12")
-    implementation("androidx.room:room-ktx:2.7.0-alpha12")
-    ksp("androidx.room:room-compiler:2.7.0-alpha12")
+    // Room (stable, kapt)
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
@@ -118,7 +117,9 @@ dependencies {
     implementation("com.jakewharton.timber:timber:5.0.1")
 }
 
-
+kapt {
+    correctErrorTypes = true
+}
 
 ktlint {
     android.set(true)
